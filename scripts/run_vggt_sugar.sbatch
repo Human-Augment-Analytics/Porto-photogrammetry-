@@ -8,7 +8,7 @@
 #SBATCH --mem=128gb
 #SBATCH --gres=gpu:b200:1
 #SBATCH --time=04:00:00
-#SBATCH --partition=gpu
+#SBATCH --partition=hpg-b200
 
 # ============================================================
 # VGGT -> SuGaR Pipeline (B200)
