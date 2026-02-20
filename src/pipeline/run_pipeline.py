@@ -1,5 +1,5 @@
 # Main script to run the VGGT model pipeline
-# Now saves predictions for NeuS2 conversion
+# Saves predictions for SuGaR (COLMAP format) or NeuS2 conversion
 # Adapted from demo_gradio.py with modifications for direct execution
 # Author: Clinton Kunhardt
 
@@ -34,7 +34,7 @@ model = model.to(device)
 
 def run_model(target_dir, model) -> dict:
     """
-    EXACT BYTE-FOR-BYTE copy of demo_gradio.py run_model function
+    Run VGGT inference on images with B200/Blackwell optimizations.
     """
     print(f"Processing images from {target_dir}")
 
@@ -46,6 +46,22 @@ def run_model(target_dir, model) -> dict:
     # Move model to device
     model = model.to(device)
     model.eval()
+
+    # B200 (Blackwell) detection and optimizations
+    compute_cap = torch.cuda.get_device_capability()
+    is_blackwell = compute_cap[0] >= 10
+
+    if is_blackwell:
+        print(f"Blackwell GPU detected (SM {compute_cap[0]}.{compute_cap[1]}) — enabling optimizations")
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        try:
+            if not getattr(model, "_compiled", False):
+                model = torch.compile(model, mode="max-autotune")
+                model._compiled = True
+                print("  torch.compile (max-autotune) enabled")
+        except Exception as e:
+            print(f"  torch.compile skipped: {e}")
 
     # Load and preprocess images
     image_names = glob.glob(os.path.join(target_dir, "images", "*"))
@@ -59,10 +75,10 @@ def run_model(target_dir, model) -> dict:
 
     # Run inference
     print("Running inference...")
-    dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+    dtype = torch.bfloat16 if compute_cap[0] >= 8 else torch.float16
 
     with torch.no_grad():
-        with torch.cuda.amp.autocast(dtype=dtype):
+        with torch.amp.autocast("cuda", dtype=dtype):
             predictions = model(images)
 
     # Convert pose encoding to extrinsic and intrinsic matrices
@@ -233,10 +249,37 @@ def parse_arguments():
     
     parser.add_argument(
         "--skip_glb",
-        action="store_true", 
+        action="store_true",
         help="Skip GLB generation (useful when only saving predictions)"
     )
-    
+
+    parser.add_argument(
+        "--save_for_sugar",
+        action="store_true",
+        help="Export COLMAP format for SuGaR / 3D Gaussian Splatting"
+    )
+
+    parser.add_argument(
+        "--colmap_output_dir",
+        type=str,
+        default=None,
+        help="Output directory for COLMAP data (defaults to output_dir/colmap)"
+    )
+
+    parser.add_argument(
+        "--max_points3d",
+        type=int,
+        default=200_000,
+        help="Maximum number of 3D points for COLMAP export"
+    )
+
+    parser.add_argument(
+        "--point_conf_threshold",
+        type=float,
+        default=70.0,
+        help="Confidence percentile threshold for 3D point filtering (0-100)"
+    )
+
     return parser.parse_args()
 
 def validate_input_directory(input_dir):
@@ -278,13 +321,14 @@ def main():
     print(f"Confidence threshold: {args.conf_thres}")
     print(f"Prediction mode: {args.prediction_mode}")
     print(f"Save for NeuS2: {args.save_for_neus2}")
+    print(f"Save for SuGaR: {args.save_for_sugar}")
     print(f"Skip GLB: {args.skip_glb}")
     
     try:
         start_time = time.time()
         
-        # ===== MODIFIED SECTION: Capture raw images for NeuS2 =====
-        if args.save_for_neus2:
+        # ===== Capture raw images for export =====
+        if args.save_for_neus2 or args.save_for_sugar:
             # Load images separately to keep raw version
             image_names = glob.glob(os.path.join(args.input_dir, "images", "*"))
             image_names = sorted(image_names)
@@ -320,6 +364,40 @@ def main():
             print()
             print("="*60)
         
+        # ===== NEW: Export COLMAP format for SuGaR/3DGS =====
+        if args.save_for_sugar:
+            from vggt_to_colmap import convert_vggt_to_colmap
+
+            # Save predictions pickle first (reuse existing save)
+            if not args.save_for_neus2:
+                predictions_file = save_predictions_for_neus2(
+                    predictions, images_raw, output_dir, args.input_dir
+                )
+            # predictions_file is set by the NeuS2 block above if both flags are on
+
+            colmap_dir = args.colmap_output_dir or os.path.join(output_dir, "colmap")
+
+            convert_vggt_to_colmap(
+                predictions_path=predictions_file,
+                output_dir=colmap_dir,
+                images_source_dir=os.path.join(args.input_dir, "images"),
+                conf_threshold_percentile=args.point_conf_threshold,
+                max_points=args.max_points3d,
+            )
+
+            print("\n" + "=" * 60)
+            print("Ready for SuGaR!")
+            print("=" * 60)
+            print("Train 3DGS + extract mesh:")
+            print()
+            print(f"python SuGaR/train_full_pipeline.py -s {colmap_dir} \\")
+            print("    -r dn_consistency --high_poly True --export_obj True")
+            print()
+            print("Or use the end-to-end pipeline:")
+            print(f"python src/pipeline/run_sugar_pipeline.py {args.input_dir} \\")
+            print(f"    --quality medium --output_dir {output_dir}")
+            print("=" * 60)
+
         # ===== ORIGINAL: Generate GLB (optional) =====
         if not args.skip_glb:
             # Generate output filename with timestamp
