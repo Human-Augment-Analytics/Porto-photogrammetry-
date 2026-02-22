@@ -1,6 +1,3 @@
-[submodule "src/gaussian-splatting"]
-	path = src/gaussian_splatting
-	url = https://github.com/graphdeco-inria/gaussian-splatting.git
 [submodule "src/sugar"]
 	path = src/sugar
 	url = https://github.com/Anttwo/SuGaR.git
