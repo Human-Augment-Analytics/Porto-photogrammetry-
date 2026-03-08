@@ -32,7 +32,7 @@ model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
 model.eval()
 model = model.to(device)
 
-def run_model(target_dir, model, load_mode="crop") -> dict:
+def run_model(target_dir, model, load_mode="crop", prediction_mode="Depthmap and Camera Branch") -> dict:
     """
     Run VGGT inference on images with B200/Blackwell optimizations.
     """
@@ -98,20 +98,19 @@ def run_model(target_dir, model, load_mode="crop") -> dict:
     world_points = unproject_depth_map_to_point_map(depth_map, predictions["extrinsic"], predictions["intrinsic"])
     predictions["world_points_from_depth"] = world_points
 
-    for conf_key in ('depth_conf', 'world_points_conf'):
-        if conf_key in predictions:
-            confs = []
-            conf = predictions[conf_key]
-            if conf.shape[0] == 1:
-                conf = conf[0]
-            if conf.ndim == 4 and conf.shape[-1] == 1:
-                conf = conf[..., 0]
-            elif conf.ndim == 4 and conf.shape[1] == 1:
-                conf = conf[:, 0]
-            for i in range(conf.shape[0]):
-                confs.append(conf[i])
-            predictions['depth_conf'] = confs
-            break
+    conf_key = 'depth_conf' if prediction_mode == "Depthmap and Camera Branch" else "world_points_conf"
+    if conf_key in predictions:
+        confs = []
+        conf = predictions[conf_key]
+        if conf.shape[0] == 1:
+            conf = conf[0]
+        if conf.ndim == 4 and conf.shape[-1] == 1:
+            conf = conf[..., 0]
+        elif conf.ndim == 4 and conf.shape[1] == 1:
+            conf = conf[:, 0]
+        for i in range(conf.shape[0]):
+            confs.append(conf[i])
+        predictions['conf'] = confs
 
     # Clean up
     torch.cuda.empty_cache()
@@ -374,7 +373,7 @@ def main():
             images_raw = None
         
         # Run the model
-        predictions = run_model(args.input_dir, model, load_mode=args.load_mode)
+        predictions = run_model(args.input_dir, model, load_mode=args.load_mode, prediction_mode=args.prediction_mode)
         total_time = time.time() - start_time
         
         print(f"SUCCESS! Processing took {total_time:.2f} seconds")

@@ -274,18 +274,18 @@ def predictions_to_ply(
         points_rgb = resized
 
     # --- Confidence mask ------------------------------------------------------
-    if predictions['depth_conf']:
-        depth_conf = np.stack(predictions['depth_conf'], axis=0)  # (S, H, W)
+    if predictions['conf']:
+        conf = np.stack(predictions['conf'], axis=0)  # (S, H, W)
         # Resize conf to match point-map resolution if shapes differ
-        if depth_conf.shape[1:] != (pt_h, pt_w):
+        if conf.shape[1:] != (pt_h, pt_w):
             from PIL import Image as _PILImg
-            resized_conf = np.zeros((depth_conf.shape[0], pt_h, pt_w), dtype=depth_conf.dtype)
-            for i in range(depth_conf.shape[0]):
-                c = _PILImg.fromarray(depth_conf[i])
+            resized_conf = np.zeros((conf.shape[0], pt_h, pt_w), dtype=conf.dtype)
+            for i in range(conf.shape[0]):
+                c = _PILImg.fromarray(conf[i])
                 c = c.resize((pt_w, pt_h), _PILImg.BILINEAR)
                 resized_conf[i] = np.array(c)
-            depth_conf = resized_conf
-        conf_mask = depth_conf >= conf_thres
+            conf = resized_conf
+        conf_mask = conf >= conf_thres
     else:
         conf_mask = np.ones(points_3d.shape[:3], dtype=bool)
 
