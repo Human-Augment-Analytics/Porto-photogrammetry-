@@ -214,6 +214,98 @@ def predictions_to_glb(
     return scene_3d
 
 
+def predictions_to_ply(
+    predictions,
+    conf_thres=2.0,
+    filter_by_frames="all",
+    target_dir=None,
+    prediction_mode="Predicted Pointmap",
+) -> trimesh.PointCloud:
+    """
+    Converts VGGT predictions to a PLY-compatible point cloud.
+
+    Args:
+        predictions (dict): Dictionary containing model predictions with keys:
+            - world_points: 3D point coordinates (S, H, W, 3)
+            - world_points_conf: Confidence scores (S, H, W)
+            - images: Input images (S, H, W, 3)
+        conf_thres (float): Percentage of low-confidence points to filter out (default: 50.0)
+        filter_by_frames (str): Frame filter specification (default: "all")
+        target_dir (str): Output directory for intermediate files (default: None)
+        prediction_mode (str): Prediction mode selector (default: "Predicted Pointmap")
+
+    Returns:
+        trimesh.PointCloud: Point cloud with filtered vertices and colors
+    """
+    if not isinstance(predictions, dict):
+        raise ValueError("predictions must be a dictionary")
+
+    if conf_thres is None:
+        conf_thres = 10.0
+
+    selected_frame_idx = None
+    if filter_by_frames != "all" and filter_by_frames != "All":
+        try:
+            selected_frame_idx = int(filter_by_frames.split(":")[0])
+        except (ValueError, IndexError):
+            pass
+
+    if "Pointmap" in prediction_mode:
+        if "world_points" in predictions:
+            points_3d = predictions["world_points"]
+        else:
+            points_3d = predictions["world_points_from_depth"]
+    else:
+        points_3d = predictions["world_points_from_depth"]
+
+    # --- RGB colours ----------------------------------------------------------
+    # (S, C, H, W) -> (S, H, W, C)
+    points_rgb = predictions['images'].transpose(0, 2, 3, 1)
+    points_rgb = np.clip(points_rgb * 255, 0, 255).astype(np.uint8)
+
+    # Resize RGB to match point-map spatial resolution if needed
+    pt_h, pt_w = points_3d.shape[1], points_3d.shape[2]
+    if points_rgb.shape[1] != pt_h or points_rgb.shape[2] != pt_w:
+        resized = np.zeros((points_rgb.shape[0], pt_h, pt_w, 3), dtype=np.uint8)
+        for i in range(points_rgb.shape[0]):
+            img = Image.fromarray(points_rgb[i])
+            img = img.resize((pt_w, pt_h), Image.BILINEAR)
+            resized[i] = np.array(img)
+        points_rgb = resized
+
+    # --- Confidence mask ------------------------------------------------------
+    if predictions['depth_conf']:
+        depth_conf = np.stack(predictions['depth_conf'], axis=0)  # (S, H, W)
+        # Resize conf to match point-map resolution if shapes differ
+        if depth_conf.shape[1:] != (pt_h, pt_w):
+            from PIL import Image as _PILImg
+            resized_conf = np.zeros((depth_conf.shape[0], pt_h, pt_w), dtype=depth_conf.dtype)
+            for i in range(depth_conf.shape[0]):
+                c = _PILImg.fromarray(depth_conf[i])
+                c = c.resize((pt_w, pt_h), _PILImg.BILINEAR)
+                resized_conf[i] = np.array(c)
+            depth_conf = resized_conf
+        conf_mask = depth_conf >= conf_thres
+    else:
+        conf_mask = np.ones(points_3d.shape[:3], dtype=bool)
+
+    # --- Flatten & filter -----------------------------------------------------
+    print(f"Points 3D shape: {points_3d.shape}")
+    points_3d_flat = points_3d[conf_mask]
+    points_rgb_flat = points_rgb[conf_mask]
+    print(f"Points 3D flat shape: {points_3d_flat.shape}")
+
+    # Remove NaN / Inf / extreme values
+    valid = np.isfinite(points_3d_flat).all(axis=-1)
+    points_3d_flat = points_3d_flat[valid]
+    points_rgb_flat = points_rgb_flat[valid]
+
+    if len(points_3d_flat) == 0:
+        return None
+    cloud = trimesh.PointCloud(points_3d_flat, colors=points_rgb_flat)
+    return cloud
+
+
 def integrate_camera_into_scene(scene: trimesh.Scene, transform: np.ndarray, face_colors: tuple, scene_scale: float):
     """
     Integrates a fake camera mesh into the 3D scene.

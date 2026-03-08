@@ -15,7 +15,7 @@ import argparse  # Added missing import
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from visual_util import predictions_to_glb
+from visual_util import predictions_to_glb, predictions_to_ply
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
@@ -32,7 +32,7 @@ model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
 model.eval()
 model = model.to(device)
 
-def run_model(target_dir, model) -> dict:
+def run_model(target_dir, model, load_mode="crop") -> dict:
     """
     Run VGGT inference on images with B200/Blackwell optimizations.
     """
@@ -70,7 +70,7 @@ def run_model(target_dir, model) -> dict:
     if len(image_names) == 0:
         raise ValueError("No images found. Check your upload.")
 
-    images = load_and_preprocess_images(image_names).to(device)
+    images = load_and_preprocess_images(image_names, mode=load_mode).to(device)
     print(f"Preprocessed images shape: {images.shape}")
 
     # Run inference
@@ -97,6 +97,21 @@ def run_model(target_dir, model) -> dict:
     depth_map = predictions["depth"]  # (S, H, W, 1)
     world_points = unproject_depth_map_to_point_map(depth_map, predictions["extrinsic"], predictions["intrinsic"])
     predictions["world_points_from_depth"] = world_points
+
+    for conf_key in ('depth_conf', 'world_points_conf'):
+        if conf_key in predictions:
+            confs = []
+            conf = predictions[conf_key]
+            if conf.shape[0] == 1:
+                conf = conf[0]
+            if conf.ndim == 4 and conf.shape[-1] == 1:
+                conf = conf[..., 0]
+            elif conf.ndim == 4 and conf.shape[1] == 1:
+                conf = conf[:, 0]
+            for i in range(conf.shape[0]):
+                confs.append(conf[i])
+            predictions['depth_conf'] = confs
+            break
 
     # Clean up
     torch.cuda.empty_cache()
@@ -227,17 +242,32 @@ def parse_arguments():
     )
     
     parser.add_argument(
+        "--load_mode",
+        type=str,
+        default="crop",
+        choices=["crop", "pad"],
+        help="Load mode for the images"
+    )
+
+    parser.add_argument(
         "--conf_thres",
         type=float,
         default=50.0,
         help="Confidence threshold for GLB generation"
+    )
+
+    parser.add_argument(
+        "--conf_thres_ply",
+        type=float,
+        default=2.0,
+        help="Confidence threshold for PLY generation"
     )
     
     parser.add_argument(
         "--prediction_mode",
         type=str,
         default="Depthmap and Camera Branch",
-        choices=["Depthmap and Camera Branch", "Points Only", "Cameras Only"],
+        choices=["Depthmap and Camera Branch", "Pointmap", "Cameras Only"],
         help="Prediction mode for GLB generation"
     )
     
@@ -251,6 +281,12 @@ def parse_arguments():
         "--skip_glb",
         action="store_true",
         help="Skip GLB generation (useful when only saving predictions)"
+    )
+
+    parser.add_argument(
+        "--save_ply",
+        action="store_true",
+        help="Save point cloud as PLY file"
     )
 
     parser.add_argument(
@@ -322,6 +358,7 @@ def main():
     print(f"Prediction mode: {args.prediction_mode}")
     print(f"Save for NeuS2: {args.save_for_neus2}")
     print(f"Save for SuGaR: {args.save_for_sugar}")
+    print(f"Save PLY: {args.save_ply}")
     print(f"Skip GLB: {args.skip_glb}")
     
     try:
@@ -332,12 +369,12 @@ def main():
             # Load images separately to keep raw version
             image_names = glob.glob(os.path.join(args.input_dir, "images", "*"))
             image_names = sorted(image_names)
-            images_raw = load_and_preprocess_images(image_names)
+            images_raw = load_and_preprocess_images(image_names, mode=args.load_mode)
         else:
             images_raw = None
         
         # Run the model
-        predictions = run_model(args.input_dir, model)
+        predictions = run_model(args.input_dir, model, load_mode=args.load_mode)
         total_time = time.time() - start_time
         
         print(f"SUCCESS! Processing took {total_time:.2f} seconds")
@@ -397,6 +434,24 @@ def main():
             print(f"python src/pipeline/run_sugar_pipeline.py {args.input_dir} \\")
             print(f"    --quality medium --output_dir {output_dir}")
             print("=" * 60)
+
+        # ===== Save PLY point cloud (optional) =====
+        if args.save_ply:
+            timestamp_ply = int(time.time())
+            ply_filename = f"vggt_output_{timestamp_ply}.ply"
+            ply_path = os.path.join(output_dir, ply_filename)
+
+            print(f"Saving PLY to {ply_path}")
+
+            point_cloud = predictions_to_ply(
+                predictions,
+                conf_thres=args.conf_thres_ply,
+                target_dir=args.input_dir,
+                prediction_mode=args.prediction_mode,
+            )
+            point_cloud.export(ply_path)
+
+            print(f"Successfully saved PLY to: {ply_path}")
 
         # ===== ORIGINAL: Generate GLB (optional) =====
         if not args.skip_glb:
