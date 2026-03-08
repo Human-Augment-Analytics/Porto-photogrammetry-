@@ -1,3 +1,6 @@
 [submodule "src/sugar"]
 	path = src/sugar
 	url = https://github.com/Anttwo/SuGaR.git
+[submodule "src/light_glue"]
+	path = src/light_glue
+	url = https://github.com/cvg/LightGlue.git
