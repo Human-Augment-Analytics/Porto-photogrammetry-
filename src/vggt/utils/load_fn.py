@@ -94,13 +94,14 @@ def load_and_preprocess_images_square(image_path_list, target_size=1024):
     return images, original_coords
 
 
-def load_and_preprocess_images(image_path_list, mode="crop"):
+def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"):
     """
     A quick start function to load and preprocess images for model input.
     This assumes the images should have the same shape for easier batching, but our model can also work well with different shapes.
 
     Args:
         image_path_list (list): List of paths to image files
+        mask_path_list (list, optional): List of paths to mask files
         mode (str, optional): Preprocessing mode, either "crop" or "pad".
                              - "crop" (default): Sets width to 518px and center crops height if needed.
                              - "pad": Preserves all pixels by making the largest dimension 518px
@@ -135,7 +136,13 @@ def load_and_preprocess_images(image_path_list, mode="crop"):
     target_size = 518
 
     # First process all images and collect their shapes
-    for image_path in image_path_list:
+    for i in range(len(image_path_list)):
+        image_path = image_path_list[i]
+        if mask_path_list is not None and i < len(mask_path_list):
+            mask_path = mask_path_list[i]
+        else:
+            mask_path = None
+
         # Open image
         img = Image.open(image_path)
 
@@ -145,6 +152,10 @@ def load_and_preprocess_images(image_path_list, mode="crop"):
             background = Image.new("RGBA", img.size, (255, 255, 255, 255))
             # Alpha composite onto the white background
             img = Image.alpha_composite(background, img)
+
+        elif mask_path is not None:
+            mask = Image.open(mask_path).convert("L")
+            img = Image.composite(img, Image.new("RGB", img.size, 0), mask)
 
         # Now convert to "RGB" (this step assigns white for transparent areas)
         img = img.convert("RGB")

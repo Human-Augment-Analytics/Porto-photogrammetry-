@@ -64,13 +64,25 @@ def run_model(target_dir, model, load_mode="crop", prediction_mode="Depthmap and
             print(f"  torch.compile skipped: {e}")
 
     # Load and preprocess images
-    image_names = glob.glob(os.path.join(target_dir, "images", "*"))
+    images_dir = os.path.join(target_dir, "images")
+    masks_dir = os.path.join(target_dir, "masks")
+    image_names = glob.glob(os.path.join(images_dir, "*"))
     image_names = sorted(image_names)
+    mask_names = []
+    for image_name in image_names:
+        base_name = os.path.basename(image_name)
+        base_name_prefix = base_name.split(".")[0]
+        mask_name = os.path.join(masks_dir, f"{base_name_prefix}.png")
+        if os.path.exists(mask_name):
+            mask_names.append(mask_name)
+        else:
+            mask_names.append(None)
     print(f"Found {len(image_names)} images")
+    print(f"Found {len([m for m in mask_names if m is not None])} corresponding masks")
     if len(image_names) == 0:
         raise ValueError("No images found. Check your upload.")
 
-    images = load_and_preprocess_images(image_names, mode=load_mode).to(device)
+    images = load_and_preprocess_images(image_names, mask_path_list=mask_names, mode=load_mode).to(device)
     print(f"Preprocessed images shape: {images.shape}")
 
     # Run inference
