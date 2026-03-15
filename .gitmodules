@@ -1,6 +1,6 @@
-[submodule "src/sugar"]
-	path = src/sugar
-	url = https://github.com/Anttwo/SuGaR.git
 [submodule "src/light_glue"]
 	path = src/light_glue
 	url = https://github.com/cvg/LightGlue.git
+[submodule "src/pytorch3d"]
+	path = src/pytorch3d
+	url = https://github.com/facebookresearch/pytorch3d.git

@@ -32,7 +32,7 @@ model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
 model.eval()
 model = model.to(device)
 
-def run_model(target_dir, model, load_mode="crop", prediction_mode="Depthmap and Camera Branch") -> dict:
+def run_model(target_dir, model, use_masks=False, load_mode="crop", prediction_mode="Depthmap and Camera Branch") -> dict:
     """
     Run VGGT inference on images with B200/Blackwell optimizations.
     """
@@ -68,17 +68,22 @@ def run_model(target_dir, model, load_mode="crop", prediction_mode="Depthmap and
     masks_dir = os.path.join(target_dir, "masks")
     image_names = glob.glob(os.path.join(images_dir, "*"))
     image_names = sorted(image_names)
-    mask_names = []
-    for image_name in image_names:
-        base_name = os.path.basename(image_name)
-        base_name_prefix = base_name.split(".")[0]
-        mask_name = os.path.join(masks_dir, f"{base_name_prefix}.png")
-        if os.path.exists(mask_name):
-            mask_names.append(mask_name)
-        else:
-            mask_names.append(None)
     print(f"Found {len(image_names)} images")
-    print(f"Found {len([m for m in mask_names if m is not None])} corresponding masks")
+    
+    if use_masks:
+        mask_names = []
+        for image_name in image_names:
+            base_name = os.path.basename(image_name)
+            base_name_prefix = base_name.split(".")[0]
+            mask_name = os.path.join(masks_dir, f"{base_name_prefix}.png")
+            if os.path.exists(mask_name):
+                mask_names.append(mask_name)
+            else:
+                mask_names.append(None)
+        print(f"Found {len([m for m in mask_names if m is not None])} corresponding masks")
+    else:
+        mask_names = None
+
     if len(image_names) == 0:
         raise ValueError("No images found. Check your upload.")
 
@@ -261,6 +266,12 @@ def parse_arguments():
     )
 
     parser.add_argument(
+        "--use_masks",
+        action="store_true",
+        help="Use masks for image loading"
+    )
+
+    parser.add_argument(
         "--conf_thres",
         type=float,
         default=50.0,
@@ -380,12 +391,12 @@ def main():
             # Load images separately to keep raw version
             image_names = glob.glob(os.path.join(args.input_dir, "images", "*"))
             image_names = sorted(image_names)
-            images_raw = load_and_preprocess_images(image_names, mode=args.load_mode)
+            images_raw = load_and_preprocess_images(image_names, use_masks=args.use_masks, mode=args.load_mode)
         else:
             images_raw = None
         
         # Run the model
-        predictions = run_model(args.input_dir, model, load_mode=args.load_mode, prediction_mode=args.prediction_mode)
+        predictions = run_model(args.input_dir, model, use_masks=args.use_masks, load_mode=args.load_mode, prediction_mode=args.prediction_mode)
         total_time = time.time() - start_time
         
         print(f"SUCCESS! Processing took {total_time:.2f} seconds")
