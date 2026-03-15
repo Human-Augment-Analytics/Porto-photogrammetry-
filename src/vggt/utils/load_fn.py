@@ -131,6 +131,7 @@ def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"
         raise ValueError("Mode must be either 'crop' or 'pad'")
 
     images = []
+    masks = []
     shapes = set()
     to_tensor = TF.ToTensor()
     target_size = 518
@@ -142,6 +143,7 @@ def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"
             mask_path = mask_path_list[i]
         else:
             mask_path = None
+            mask = None
 
         # Open image
         img = Image.open(image_path)
@@ -178,12 +180,16 @@ def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"
 
         # Resize with new dimensions (width, height)
         img = img.resize((new_width, new_height), Image.Resampling.BICUBIC)
+        if mask is not None:
+            mask = mask.resize((new_width, new_height), Image.Resampling.BICUBIC)
         img = to_tensor(img)  # Convert to tensor (0, 1)
 
         # Center crop height if it's larger than 518 (only in crop mode)
         if mode == "crop" and new_height > target_size:
             start_y = (new_height - target_size) // 2
             img = img[:, start_y : start_y + target_size, :]
+            if mask is not None:
+                mask = mask[:, start_y : start_y + target_size]
 
         # For pad mode, pad to make a square of target_size x target_size
         if mode == "pad":
@@ -203,6 +209,7 @@ def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"
 
         shapes.add((img.shape[1], img.shape[2]))
         images.append(img)
+        masks.append(mask)
 
     # Check if we have different shapes
     # In theory our model can also work well with different shapes
@@ -238,4 +245,4 @@ def load_and_preprocess_images(image_path_list, mask_path_list=None, mode="crop"
         if images.dim() == 3:
             images = images.unsqueeze(0)
 
-    return images
+    return images, masks

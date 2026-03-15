@@ -13,6 +13,8 @@ import gc
 import pickle
 import argparse  # Added missing import
 
+from PIL import Image
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from visual_util import predictions_to_glb, predictions_to_ply
@@ -87,7 +89,8 @@ def run_model(target_dir, model, use_masks=False, load_mode="crop", prediction_m
     if len(image_names) == 0:
         raise ValueError("No images found. Check your upload.")
 
-    images = load_and_preprocess_images(image_names, mask_path_list=mask_names, mode=load_mode).to(device)
+    images, masks = load_and_preprocess_images(image_names, mask_path_list=mask_names, mode=load_mode)
+    images = images.to(device)
     print(f"Preprocessed images shape: {images.shape}")
 
     # Run inference
@@ -126,7 +129,13 @@ def run_model(target_dir, model, use_masks=False, load_mode="crop", prediction_m
         elif conf.ndim == 4 and conf.shape[1] == 1:
             conf = conf[:, 0]
         for i in range(conf.shape[0]):
-            confs.append(conf[i])
+            if masks[i] is not None:
+                mask = np.array(masks[i])
+                mask = mask.astype(np.float32)
+                mask = mask / 255.0
+            else:
+                mask = np.ones_like(conf[i], dtype=np.float32)
+            confs.append(conf[i] * mask)
         predictions['conf'] = confs
 
     # Clean up
@@ -389,9 +398,24 @@ def main():
         # ===== Capture raw images for export =====
         if args.save_for_neus2 or args.save_for_sugar:
             # Load images separately to keep raw version
-            image_names = glob.glob(os.path.join(args.input_dir, "images", "*"))
+            imgs_dir = os.path.join(args.input_dir, "images")
+            masks_dir = os.path.join(args.input_dir, "masks")
+            image_names = glob.glob(os.path.join(imgs_dir, "*"))
             image_names = sorted(image_names)
-            images_raw = load_and_preprocess_images(image_names, use_masks=args.use_masks, mode=args.load_mode)
+            if args.use_masks:
+                mask_names = []
+                for image_name in image_names:
+                    base_name = os.path.basename(image_name)
+                    base_name_prefix = base_name.split(".")[0]
+                    mask_name = os.path.join(masks_dir, f"{base_name_prefix}.png")
+                    if os.path.exists(mask_name):
+                        mask_names.append(mask_name)
+                    else:
+                        mask_names.append(None)
+                print(f"Found {len([m for m in mask_names if m is not None])} corresponding masks")
+            else:
+                mask_names = None
+            images_raw, _ = load_and_preprocess_images(image_names, mask_path_list=mask_names, mode=args.load_mode)
         else:
             images_raw = None
         
