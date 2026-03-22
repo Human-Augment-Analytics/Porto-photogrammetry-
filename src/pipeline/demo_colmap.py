@@ -23,6 +23,7 @@ from pathlib import Path
 import trimesh
 import pycolmap
 
+from PIL import Image
 
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
@@ -44,6 +45,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="VGGT Demo")
     parser.add_argument("--input_dir", type=str, required=True, help="Directory containing the scene images")
     parser.add_argument("--output_dir", type=str, required=True, help="Directory to save reconstruction output")
+    parser.add_argument("--use_masks", action="store_true", default=False, help="Use masks for reconstruction")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--use_ba", action="store_true", default=False, help="Use BA for reconstruction")
     ######### BA parameters #########
@@ -64,7 +66,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_VGGT(model, images, dtype, resolution=518):
+def run_VGGT(model, images, masks, dtype, resolution=518):
     # images: [B, 3, H, W]
 
     assert len(images.shape) == 4
@@ -72,6 +74,13 @@ def run_VGGT(model, images, dtype, resolution=518):
 
     # hard-coded to use 518 for VGGT
     images = F.interpolate(images, size=(resolution, resolution), mode="bilinear", align_corners=False)
+    masks_resized = []
+    for i in range(len(masks)):
+        mask = masks[i]
+        if mask is not None:
+            mask = mask.resize((resolution, resolution), Image.Resampling.NEAREST)
+        masks_resized.append(mask)
+    masks = masks_resized
 
     with torch.no_grad():
         with torch.cuda.amp.autocast(dtype=dtype):
@@ -89,6 +98,14 @@ def run_VGGT(model, images, dtype, resolution=518):
     intrinsic = intrinsic.squeeze(0).cpu().numpy()
     depth_map = depth_map.squeeze(0).cpu().numpy()
     depth_conf = depth_conf.squeeze(0).cpu().numpy()
+
+    for i in range(len(masks)):
+        if masks[i] is not None:
+            mask = np.array(masks[i])
+            mask = mask.astype(np.float32)
+            mask = mask / 255.0
+            depth_conf[i] *= mask
+    
     return extrinsic, intrinsic, depth_map, depth_conf
 
 
@@ -121,24 +138,39 @@ def demo_fn(args):
 
     # Get image paths and preprocess them
     image_dir = os.path.join(args.input_dir, "images")
+    mask_dir = os.path.join(args.input_dir, "masks")
     image_path_list = glob.glob(os.path.join(image_dir, "*"))
+    mask_path_list = None
     if len(image_path_list) == 0:
         raise ValueError(f"No images found in {image_dir}")
+    print(f"Found {len(image_path_list)} images in {image_dir}")
     base_image_path_list = [os.path.basename(path) for path in image_path_list]
+    
+    if args.use_masks:
+        mask_path_list = []
+        for base_image_path in base_image_path_list:
+            prefix = base_image_path.split(".")[0]
+            mask_path = os.path.join(mask_dir, f"{prefix}.png")
+            if os.path.exists(mask_path):
+                mask_path_list.append(mask_path)
+            else:
+                mask_path_list.append(None)
+        print(f"Found {len([m for m in mask_path_list if m is not None])} corresponding masks")
+        
 
     # Load images and original coordinates
     # Load Image in 1024, while running VGGT with 518
     vggt_fixed_resolution = 518
     img_load_resolution = 1024
 
-    images, original_coords = load_and_preprocess_images_square(image_path_list, img_load_resolution)
+    images, original_coords, masks = load_and_preprocess_images_square(image_path_list, mask_path_list, target_size=img_load_resolution)
     images = images.to(device)
     original_coords = original_coords.to(device)
     print(f"Loaded {len(images)} images from {image_dir}")
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
-    extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, dtype, vggt_fixed_resolution)
+    extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, masks, dtype, vggt_fixed_resolution)
     points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
 
     if args.use_ba:
