@@ -21,7 +21,7 @@
 # All flags:
 #   --image_path      Path to source images (required)
 #   --output_path     Path for COLMAP output (required)
-#   --camera_model    Camera model: PINHOLE, SIMPLE_PINHOLE, OPENCV, etc. (default: PINHOLE)
+#   --camera_model    Camera model: SIMPLE_RADIAL, PINHOLE, OPENCV, etc. (default: PINHOLE)
 #   --single_camera   Use a shared camera for all images: 0 or 1 (default: 1)
 #   --no_gpu          Disable GPU acceleration for SIFT
 #   --matcher         Matching strategy: exhaustive, sequential, vocab_tree (default: exhaustive)
@@ -40,11 +40,23 @@ COLMAP_BIN="colmap"
 IMAGE_PATH=""
 OUTPUT_PATH=""
 
+print_usage() {
+    echo "Usage: $0 --image_path <path> --output_path <path> [options]"
+    echo ""
+    echo "Options:"
+    echo "  --camera_model <model>      Camera model (default: PINHOLE)"
+    echo "  --single_camera <0|1>       Share intrinsics across all images (default: 1)"
+    echo "  --no_gpu                    Disable GPU acceleration for SIFT"
+    echo "  --matcher <name>            exhaustive, sequential, vocab_tree (default: exhaustive)"
+    echo "  --colmap <path>             Path to the COLMAP binary (default: colmap)"
+}
+
 # ============================================================
 # Parse arguments
 # ============================================================
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        -h|--help)      print_usage;       exit 0 ;;
         --image_path)   IMAGE_PATH="$2";   shift 2 ;;
         --output_path)  OUTPUT_PATH="$2";  shift 2 ;;
         --camera_model) CAMERA_MODEL="$2"; shift 2 ;;
@@ -54,14 +66,14 @@ while [[ $# -gt 0 ]]; do
         --colmap)       COLMAP_BIN="$2";   shift 2 ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 --image_path <path> --output_path <path> [options]"
+            print_usage
             exit 1 ;;
     esac
 done
 
 if [ -z "$IMAGE_PATH" ] || [ -z "$OUTPUT_PATH" ]; then
     echo "ERROR: --image_path and --output_path are required."
-    echo "Usage: $0 --image_path <path> --output_path <path> [options]"
+    print_usage
     exit 1
 fi
 
@@ -72,6 +84,7 @@ fi
 
 WORK_DIR="${OUTPUT_PATH}/distorted"
 DATABASE="${WORK_DIR}/database.db"
+MODEL_PATH="${WORK_DIR}/sparse/0"
 
 echo "=========================================="
 echo "COLMAP Sparse Reconstruction"
@@ -152,9 +165,14 @@ echo "=========================================="
 echo "Step 4/6: Image Undistortion"
 echo "=========================================="
 
+if [ ! -d "$MODEL_PATH" ]; then
+    echo "ERROR: Refined sparse model not found at $MODEL_PATH before image undistortion"
+    exit 1
+fi
+
 $COLMAP_BIN image_undistorter \
     --image_path "$IMAGE_PATH" \
-    --input_path "${WORK_DIR}/sparse/0" \
+    --input_path "$MODEL_PATH" \
     --output_path "$OUTPUT_PATH" \
     --output_type COLMAP
 
