@@ -273,13 +273,13 @@ def demo_fn(args):
         shift_point2d_to_original_res=True,
         shared_camera=shared_camera,
     )
-    print(f"Saving reconstruction to {args.output_dir}/sparse")
-    sparse_reconstruction_dir = os.path.join(args.output_dir, "sparse")
+    print(f"Saving reconstruction to {args.output_dir}/sparse/0/")
+    sparse_reconstruction_dir = os.path.join(args.output_dir, "sparse", "0")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
 
     # Save point cloud for fast visualization
-    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.output_dir, "sparse/points.ply"))
+    trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.output_dir, "sparse/0/points.ply"))
 
     return True
 

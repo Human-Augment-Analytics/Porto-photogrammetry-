@@ -1,3 +1,4 @@
+import os
 import argparse
 from sugar_utils.general_utils import str2bool
 from sugar_trainers.coarse_density import coarse_training_with_density_regularization
@@ -85,6 +86,11 @@ if __name__ == "__main__":
     # Evaluation split
     parser.add_argument('--eval', type=str2bool, default=True, help='Use eval split.')
 
+    # Output path
+    parser.add_argument('-o', '--output_path',
+                        type=str, default=None,
+                        help='(Optional) path to the output directory.')
+
     # GPU
     parser.add_argument('--gpu', type=int, default=0, help='Index of GPU device to use.')
     parser.add_argument('--white_background', type=str2bool, default=False, help='Use a white background instead of black.')
@@ -112,13 +118,26 @@ if __name__ == "__main__":
         print('Will export a UV-textured mesh as an .obj file.')
     if args.export_ply:
         print('Will export a ply file with the refined 3D Gaussians at the end of the training.')
-    
+
+    # ----- Resolve output directories -----
+    if args.output_path is not None:
+        scene_name = args.scene_path.split("/")[-1] or args.scene_path.split("/")[-2]
+        coarse_output_dir       = os.path.join(args.output_path, "coarse",       scene_name)
+        coarse_mesh_output_dir  = os.path.join(args.output_path, "coarse_mesh",  scene_name)
+        refined_output_dir      = os.path.join(args.output_path, "refined",      scene_name)
+        refined_mesh_output_dir = os.path.join(args.output_path, "refined_mesh", scene_name)
+    else:
+        coarse_output_dir       = None
+        coarse_mesh_output_dir  = None
+        refined_output_dir      = None
+        refined_mesh_output_dir = None
+
     # ----- Optimize coarse SuGaR -----
     coarse_args = AttrDict({
         'checkpoint_path': args.checkpoint_path,
         'scene_path': args.scene_path,
         'iteration_to_load': args.iteration_to_load,
-        'output_dir': None,
+        'output_dir': coarse_output_dir,
         'eval': args.eval,
         'estimation_factor': 0.2,
         'normal_factor': 0.2,
@@ -144,7 +163,7 @@ if __name__ == "__main__":
         'surface_level': args.surface_level,
         'decimation_target': args.n_vertices_in_mesh,
         'project_mesh_on_surface_points': args.project_mesh_on_surface_points,
-        'mesh_output_dir': None,
+        'mesh_output_dir': coarse_mesh_output_dir,
         'bboxmin': args.bboxmin,
         'bboxmax': args.bboxmax,
         'center_bbox': args.center_bbox,
@@ -162,7 +181,7 @@ if __name__ == "__main__":
         'scene_path': args.scene_path,
         'checkpoint_path': args.checkpoint_path,
         'mesh_path': coarse_mesh_path,      
-        'output_dir': None,
+        'output_dir': refined_output_dir,
         'iteration_to_load': args.iteration_to_load,
         'normal_consistency_factor': 0.1,    
         'gaussians_per_triangle': args.gaussians_per_triangle,        
@@ -184,8 +203,9 @@ if __name__ == "__main__":
             'scene_path': args.scene_path,
             'iteration_to_load': args.iteration_to_load,
             'checkpoint_path': args.checkpoint_path,
+            'coarse_mesh_dir': coarse_mesh_output_dir,
             'refined_model_path': refined_sugar_path,
-            'mesh_output_dir': None,
+            'mesh_output_dir': refined_mesh_output_dir,
             'n_gaussians_per_surface_triangle': args.gaussians_per_triangle,
             'square_size': args.square_size,
             'eval': args.eval,
