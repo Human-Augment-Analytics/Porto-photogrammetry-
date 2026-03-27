@@ -18,9 +18,13 @@ if __name__ == "__main__":
                         type=str, 
                         help='(Required) Path to the refine model checkpoint.')  # --OK
     parser.add_argument('-o', '--mesh_output_dir',
-                        type=str, 
-                        default=None, 
+                        type=str,
+                        default=None,
                         help='path to the output directory.')  # --OK
+    parser.add_argument('--coarse_mesh_dir',
+                        type=str,
+                        default=None,
+                        help='(Optional) path to the coarse mesh directory. Defaults to ./output/coarse_mesh/<scene_name>.')  # --OK
     parser.add_argument('-n', '--n_gaussians_per_surface_triangle',
                         default=None, type=int, help='Number of gaussians per surface triangle.')  # --OK
     parser.add_argument('--square_size',
