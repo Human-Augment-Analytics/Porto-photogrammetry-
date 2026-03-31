@@ -218,6 +218,20 @@ If you use this pipeline in your research, please cite:
       primaryClass={cs.CV},
       url={https://arxiv.org/abs/2503.11651}, 
 }
+@article{guedon2023sugar,
+  title={SuGaR: Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction and High-Quality Mesh Rendering},
+  author={Gu{\'e}don, Antoine and Lepetit, Vincent},
+  journal={CVPR},
+  year={2024}
+}
+@inproceedings{Huang2DGS2024,
+    title={2D Gaussian Splatting for Geometrically Accurate Radiance Fields},
+    author={Huang, Binbin and Yu, Zehao and Chen, Anpei and Geiger, Andreas and Gao, Shenghua},
+    publisher = {Association for Computing Machinery},
+    booktitle = {SIGGRAPH 2024 Conference Papers},
+    year      = {2024},
+    doi       = {10.1145/3641519.3657428}
+}
 ```
 
 ## Support
