@@ -8,7 +8,7 @@ requests
 trimesh
 matplotlib
 torchvision
-numpy==1.26.1
+numpy==1.26.4
 opencv-python
 scikit-learn
 torch
