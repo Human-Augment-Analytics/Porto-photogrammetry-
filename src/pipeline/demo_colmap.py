@@ -10,6 +10,7 @@ import numpy as np
 import glob
 import os
 import copy
+import shutil
 import torch
 import torch.nn.functional as F
 
@@ -280,6 +281,15 @@ def demo_fn(args):
 
     # Save point cloud for fast visualization
     trimesh.PointCloud(points_3d, colors=points_rgb).export(os.path.join(args.output_dir, "sparse/0/points.ply"))
+
+    # Copy original images to output_dir/images/
+    images_out_dir = os.path.join(args.output_dir, "images")
+    os.makedirs(images_out_dir, exist_ok=True)
+    for src_path in image_path_list:
+        dst_path = os.path.join(images_out_dir, os.path.basename(src_path))
+        if not os.path.exists(dst_path):
+            shutil.copy2(src_path, dst_path)
+    print(f"Copied {len(image_path_list)} images to {images_out_dir}")
 
     return True
 
