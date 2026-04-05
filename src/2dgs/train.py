@@ -41,6 +41,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
+    # Expand background to match the shape of the image
+    background_expanded = background.unsqueeze(1).unsqueeze(2)
+    # Assuming the first camera to initialize dimensions
+    viewpoint_cam = scene.getTrainCameras()[0]
+    sample_image = viewpoint_cam.original_image.cuda()
+    background_expanded = background_expanded.expand_as(sample_image)
+
     iter_start = torch.cuda.Event(enable_timing = True)
     iter_end = torch.cuda.Event(enable_timing = True)
 
@@ -67,9 +74,28 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
         
         render_pkg = render(viewpoint_cam, gaussians, pipe, background)
-        image, viewspace_point_tensor, visibility_filter, radii = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
+        image, viewspace_point_tensor, visibility_filter, radii, alpha, depth = (
+            render_pkg["render"],
+            render_pkg["viewspace_points"],
+            render_pkg["visibility_filter"],
+            render_pkg["radii"],
+            render_pkg["rend_alpha"],
+            render_pkg["surf_depth"]
+        )
         
         gt_image = viewpoint_cam.original_image.cuda()
+        gt_alpha = (
+            viewpoint_cam.gt_alpha_mask.cuda()
+            if viewpoint_cam.gt_alpha_mask is not None
+            else None
+        )
+        # Set the pixels in the GT image where alpha is 0 to background color
+        if gt_alpha is not None:
+            gt_image = torch.where(gt_alpha == 0, background_expanded, gt_image) # Background will be set to bg color
+            # Concatenate alpha to the RGB images
+            image = torch.cat([image, alpha], dim=0)
+            gt_image = torch.cat([gt_image, gt_alpha], dim=0)
+
         Ll1 = l1_loss(image, gt_image)
         loss = (1.0 - opt.lambda_dssim) * Ll1 + opt.lambda_dssim * (1.0 - ssim(image, gt_image))
         
