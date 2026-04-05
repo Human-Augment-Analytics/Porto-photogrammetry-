@@ -150,7 +150,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             viewpoint_stack = scene.getTrainCameras().copy()
         viewpoint_cam = viewpoint_stack.pop(randint(0, len(viewpoint_stack)-1))
 
-        gt_image, gt_image_gray = viewpoint_cam.get_image()
+        gt_image, gt_image_gray, gt_alpha_mask = viewpoint_cam.get_image()
         if iteration > 1000 and opt.exposure_compensation:
             gaussians.use_app = True
 
@@ -164,6 +164,11 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         image, viewspace_point_tensor, visibility_filter, radii = \
             render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"]
         
+        # Apply mask: set masked-out GT pixels to background, supervise alpha
+        if gt_alpha_mask is not None:
+            gt_alpha_mask = gt_alpha_mask.cuda()
+            gt_image = gt_image * gt_alpha_mask + bg[:, None, None] * (1.0 - gt_alpha_mask)
+
         # Loss
         ssim_loss = (1.0 - ssim(image, gt_image))
         if 'app_image' in render_pkg and ssim_loss < 0.5:
@@ -315,7 +320,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                         grid = patch_warp(H_ref_to_neareast.reshape(-1,3,3), ori_pixels_patch)
                         grid[:, :, 0] = 2 * grid[:, :, 0] / (W - 1) - 1.0
                         grid[:, :, 1] = 2 * grid[:, :, 1] / (H - 1) - 1.0
-                        _, nearest_image_gray = nearest_cam.get_image()
+                        _, nearest_image_gray, _ = nearest_cam.get_image()
                         sampled_gray_val = F.grid_sample(nearest_image_gray[None], grid.reshape(1, -1, 1, 2), align_corners=True)
                         sampled_gray_val = sampled_gray_val.reshape(-1, total_patch_size)
                         
@@ -447,7 +452,7 @@ def training_report(tb_writer, iteration, Ll1, loss, l1_loss, elapsed, testing_i
                     if 'app_image' in out:
                         image = out['app_image']
                     image = torch.clamp(image, 0.0, 1.0)
-                    gt_image, _ = viewpoint.get_image()
+                    gt_image, _, _ = viewpoint.get_image()
                     gt_image = torch.clamp(gt_image.to("cuda"), 0.0, 1.0)
                     if tb_writer and (idx < 5):
                         tb_writer.add_images(config['name'] + "_view_{}/render".format(viewpoint.image_name), image[None], global_step=iteration)

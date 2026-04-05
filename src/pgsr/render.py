@@ -76,7 +76,7 @@ def render_set(model_path, name, iteration, views, scene, gaussians, pipeline, b
 
     depths_tsdf_fusion = []
     for idx, view in enumerate(tqdm(views, desc="Rendering progress")):
-        gt, _ = view.get_image()
+        gt, _, _ = view.get_image()
         out = render(view, gaussians, pipeline, background, app_model=app_model)
         rendering = out["render"].clamp(0.0, 1.0)
         _, H, W = rendering.shape

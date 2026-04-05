@@ -31,6 +31,7 @@ class CameraInfo(NamedTuple):
     FovY: np.array
     FovX: np.array
     image_path: str
+    mask_path: str
     image_name: str
     width: int
     height: int
@@ -83,6 +84,7 @@ def load_poses(pose_path, num):
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
+    loaded_masks = 0
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
         # the exact output you're looking for:
@@ -114,8 +116,13 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
 
+        masks_folder = os.path.join(os.path.dirname(images_folder), "masks")
+        mask_path = os.path.join(masks_folder, image_name + ".png")
+        if not os.path.exists(mask_path):
+            mask_path = None
+
         cam_info = CameraInfo(uid=uid, global_id=idx, R=R, T=T, FovY=FovY, FovX=FovX,
-                              image_path=image_path, image_name=image_name, 
+                              image_path=image_path, mask_path=mask_path, image_name=image_name, 
                               width=width, height=height, fx=focal_length_x, fy=focal_length_y)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')

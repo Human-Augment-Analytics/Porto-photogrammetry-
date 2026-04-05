@@ -29,8 +29,13 @@ def erode(bin_img, ksize=12):
     out = 1 - dilate(1 - bin_img, ksize)
     return out
 
-def process_image(image_path, resolution, ncc_scale):
+def process_image(image_path, resolution, ncc_scale, mask_path=None):
     image = Image.open(image_path)
+    # If an external mask file exists, composite it as the alpha channel
+    if mask_path is not None and os.path.exists(mask_path):
+        image = image.convert("RGB")
+        mask = Image.open(mask_path).convert("L").resize(image.size)
+        image.putalpha(mask)
     if len(image.split()) > 3:
         resized_image_rgb = torch.cat([PILtoTorch(im, resolution) for im in image.split()[:3]], dim=0)
         loaded_mask = PILtoTorch(image.split()[3], resolution)
@@ -52,8 +57,9 @@ class Camera(nn.Module):
     def __init__(self, colmap_id, R, T, FoVx, FoVy,
                  image_width, image_height,
                  image_path, image_name, uid,
-                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0, 
+                 trans=np.array([0.0, 0.0, 0.0]), scale=1.0,
                  ncc_scale=1.0,
+                 mask_path=None,
                  preload_img=True, data_device = "cuda"
                  ):
         super(Camera, self).__init__()
@@ -84,8 +90,9 @@ class Camera(nn.Module):
         self.original_image, self.image_gray, self.mask = None, None, None
         self.preload_img = preload_img
         self.ncc_scale = ncc_scale
+        self.mask_path = mask_path
         if self.preload_img:
-            gt_image, gray_image, loaded_mask = process_image(self.image_path, self.resolution, ncc_scale)
+            gt_image, gray_image, loaded_mask = process_image(self.image_path, self.resolution, ncc_scale, mask_path=self.mask_path)
             self.original_image = gt_image.to(self.data_device)
             self.original_image_gray = gray_image.to(self.data_device)
             self.mask = loaded_mask
@@ -105,10 +112,10 @@ class Camera(nn.Module):
 
     def get_image(self):
         if self.preload_img:
-            return self.original_image.cuda(), self.original_image_gray.cuda()
+            return self.original_image.cuda(), self.original_image_gray.cuda(), self.mask
         else:
-            gt_image, gray_image, _ = process_image(self.image_path, self.resolution, self.ncc_scale)
-            return gt_image.cuda(), gray_image.cuda()
+            gt_image, gray_image, loaded_mask = process_image(self.image_path, self.resolution, self.ncc_scale, mask_path=self.mask_path)
+            return gt_image.cuda(), gray_image.cuda(), loaded_mask
 
     def get_calib_matrix_nerf(self, scale=1.0):
         intrinsic_matrix = torch.tensor([[self.Fx/scale, 0, self.Cx/scale], [0, self.Fy/scale, self.Cy/scale], [0, 0, 1]]).float()
