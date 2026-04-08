@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VGG-T to NeuS2 Converter - Object-Centered Version
+VGG-T to Instant NGP Converter - Object-Centered Version
 Uses VGG-T world points to find and center on the actual object of interest
 """
 

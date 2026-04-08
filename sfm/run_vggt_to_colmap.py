@@ -110,7 +110,7 @@ def run_VGGT(model, images, masks, dtype, resolution=518):
     return extrinsic, intrinsic, depth_map, depth_conf
 
 
-def demo_fn(args):
+def main(args):
     # Print configuration
     print("Arguments:", vars(args))
 
@@ -284,12 +284,26 @@ def demo_fn(args):
 
     # Copy original images to output_dir/images/
     images_out_dir = os.path.join(args.output_dir, "images")
+    masks_out_dir = os.path.join(args.output_dir, "masks")
     os.makedirs(images_out_dir, exist_ok=True)
-    for src_path in image_path_list:
-        dst_path = os.path.join(images_out_dir, os.path.basename(src_path))
-        if not os.path.exists(dst_path):
-            shutil.copy2(src_path, dst_path)
+    os.makedirs(masks_out_dir, exist_ok=True)
+    n_masks = 0
+    for img_src_path in image_path_list:
+        img_stem = Path(img_src_path).stem 
+        img_dst_path = os.path.join(images_out_dir, os.path.basename(img_src_path))
+        if not os.path.exists(img_dst_path):
+            shutil.copy2(img_src_path, img_dst_path)
+        
+        if args.use_masks:
+            mask_src_path = os.path.join(mask_dir, f"{img_stem}.png")
+            if os.path.exists(mask_src_path):
+                mask_dst_path = os.path.join(masks_out_dir, f"{img_stem}.png")
+                if not os.path.exists(mask_dst_path):
+                    shutil.copy2(mask_src_path, mask_dst_path)
+                n_masks += 1
+    
     print(f"Copied {len(image_path_list)} images to {images_out_dir}")
+    print(f"Copied {n_masks} masks to {masks_out_dir}")
 
     return True
 
@@ -338,7 +352,7 @@ def rename_colmap_recons_and_rescale_camera(
 if __name__ == "__main__":
     args = parse_args()
     with torch.no_grad():
-        demo_fn(args)
+        main(args)
 
 
 # Work in Progress (WIP)
@@ -357,11 +371,18 @@ Input (--input_dir):
 
 Output (--output_dir):
     output_dir/
+    ├── images/
+    │   ├── <image_0>.jpg
+    │   └── ...
+    ├── masks/
+    │   ├── <image_0>.png
+    │   └── ...
     └── sparse/            # Reconstruction results
         ├── cameras.bin    # Camera parameters (COLMAP format)
         ├── images.bin     # Pose for each image (COLMAP format)
         ├── points3D.bin   # 3D points (COLMAP format)
         └── points.ply     # Point cloud visualization file
+    
 
 Key Features
 -----------

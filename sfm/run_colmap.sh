@@ -8,6 +8,7 @@
 # Output structure:
 #   <output_path>/
 #   ├── images/            # Undistorted images
+#   ├── masks/             # Image masks
 #   └── sparse/
 #       └── 0/
 #           ├── cameras.bin
@@ -102,7 +103,7 @@ echo ""
 # Step 1: Feature Extraction
 # ============================================================
 echo "=========================================="
-echo "Step 1/5: Feature Extraction"
+echo "Step 1/6: Feature Extraction"
 echo "=========================================="
 
 mkdir -p "${WORK_DIR}/sparse"
@@ -120,7 +121,7 @@ $COLMAP_BIN feature_extractor \
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Step 2/5: Feature Matching ($MATCHER)"
+echo "Step 2/6: Feature Matching ($MATCHER)"
 echo "=========================================="
 
 case "$MATCHER" in
@@ -149,7 +150,7 @@ esac
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Step 3/5: Sparse Reconstruction (Mapper)"
+echo "Step 3/6: Sparse Reconstruction (Mapper)"
 echo "=========================================="
 
 $COLMAP_BIN mapper \
@@ -163,7 +164,7 @@ $COLMAP_BIN mapper \
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Step 4/5: Image Undistortion"
+echo "Step 4/6: Image Undistortion"
 echo "=========================================="
 
 if [ ! -d "$MODEL_PATH" ]; then
@@ -182,7 +183,7 @@ $COLMAP_BIN image_undistorter \
 # ============================================================
 echo ""
 echo "=========================================="
-echo "Step 5/5: Reorganize sparse/0/"
+echo "Step 5/6: Reorganize sparse/0/"
 echo "=========================================="
 
 # image_undistorter writes directly into sparse/; 3DGS and SuGaR
@@ -193,6 +194,18 @@ for f in cameras.bin images.bin points3D.bin; do
         mv "${OUTPUT_PATH}/sparse/$f" "${OUTPUT_PATH}/sparse/0/"
     fi
 done
+
+# ============================================================
+# Step 6: Copy masks (if any)
+# ============================================================
+echo ""
+echo "=========================================="
+echo "Step 6/6: Copy masks from input directory (if any)"
+echo "=========================================="
+
+if [ -d "$INPUT_PATH/masks" ]; then
+    cp "$INPUT_PATH/masks/"* "$OUTPUT_PATH/masks/"
+fi
 
 echo "Done."
 
