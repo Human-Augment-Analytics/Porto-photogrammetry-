@@ -1,9 +1,8 @@
 #!/bin/bash
 # Run COLMAP sparse reconstruction from images.
 #
-# Produces the same directory layout as the VGGT-based pipeline
-# (src/pipeline/vggt_to_colmap.py), so the output can be used
-# directly with 3D Gaussian Splatting and SuGaR.
+# Produces directory layout that can be used
+# directly with 3D Gaussian Splatting, SuGaR, and 2DGS.
 #
 # Output structure:
 #   <output_path>/
