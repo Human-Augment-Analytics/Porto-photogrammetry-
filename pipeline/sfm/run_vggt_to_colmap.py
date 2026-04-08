@@ -6,6 +6,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import random
+import logging
 import numpy as np
 import glob
 import os
@@ -25,6 +26,9 @@ import trimesh
 import pycolmap
 
 from PIL import Image
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images_square
@@ -111,8 +115,10 @@ def run_VGGT(model, images, masks, dtype, resolution=518):
 
 
 def main(args):
-    # Print configuration
-    print("Arguments:", vars(args))
+    logger.info(f"Input:     {args.input_dir}")
+    logger.info(f"Output:    {args.output_dir}")
+    logger.info(f"Use BA:    {args.use_ba}")
+    logger.info(f"Use masks: {args.use_masks}")
 
     # Set seed for reproducibility
     np.random.seed(args.seed)
@@ -121,13 +127,13 @@ def main(args):
     if torch.cuda.is_available():
         torch.cuda.manual_seed(args.seed)
         torch.cuda.manual_seed_all(args.seed)  # for multi-GPU
-    print(f"Setting seed as: {args.seed}")
+    logger.info(f"Setting seed as: {args.seed}")
 
     # Set device and dtype
     dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-    print(f"Using dtype: {dtype}")
+    logger.info(f"Using device: {device}")
+    logger.info(f"Using dtype: {dtype}")
 
     # Run VGGT for camera and depth estimation
     model = VGGT()
@@ -135,7 +141,7 @@ def main(args):
     model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
     model.eval()
     model = model.to(device)
-    print(f"Model loaded")
+    logger.info("Model loaded")
 
     # Get image paths and preprocess them
     image_dir = os.path.join(args.input_dir, "images")
@@ -144,7 +150,7 @@ def main(args):
     mask_path_list = None
     if len(image_path_list) == 0:
         raise ValueError(f"No images found in {image_dir}")
-    print(f"Found {len(image_path_list)} images in {image_dir}")
+    logger.info(f"Found {len(image_path_list)} images in {image_dir}")
     base_image_path_list = [os.path.basename(path) for path in image_path_list]
     
     if args.use_masks:
@@ -156,7 +162,7 @@ def main(args):
                 mask_path_list.append(mask_path)
             else:
                 mask_path_list.append(None)
-        print(f"Found {len([m for m in mask_path_list if m is not None])} corresponding masks")
+        logger.info(f"Found {len([m for m in mask_path_list if m is not None])} corresponding masks")
         
 
     # Load images and original coordinates
@@ -167,7 +173,7 @@ def main(args):
     images, original_coords, masks = load_and_preprocess_images_square(image_path_list, mask_path_list, target_size=img_load_resolution)
     images = images.to(device)
     original_coords = original_coords.to(device)
-    print(f"Loaded {len(images)} images from {image_dir}")
+    logger.info(f"Loaded {len(images)} images from {image_dir}")
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
@@ -252,7 +258,7 @@ def main(args):
         points_xyf = points_xyf[conf_mask]
         points_rgb = points_rgb[conf_mask]
 
-        print("Converting to COLMAP format")
+        logger.info("Converting to COLMAP format")
         reconstruction = batch_np_matrix_to_pycolmap_wo_track(
             points_3d,
             points_xyf,
@@ -274,7 +280,7 @@ def main(args):
         shift_point2d_to_original_res=True,
         shared_camera=shared_camera,
     )
-    print(f"Saving reconstruction to {args.output_dir}/sparse/0/")
+    logger.info(f"Saving reconstruction to {args.output_dir}/sparse/0/")
     sparse_reconstruction_dir = os.path.join(args.output_dir, "sparse", "0")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
@@ -302,8 +308,8 @@ def main(args):
                     shutil.copy2(mask_src_path, mask_dst_path)
                 n_masks += 1
     
-    print(f"Copied {len(image_path_list)} images to {images_out_dir}")
-    print(f"Copied {n_masks} masks to {masks_out_dir}")
+    logger.info(f"Copied {len(image_path_list)} images to {images_out_dir}")
+    logger.info(f"Copied {n_masks} masks to {masks_out_dir}")
 
     return True
 
