@@ -110,7 +110,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
                               image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
-    print(f"Loaded {loaded_masks} masks")
+    sys.stdout.write(f"Loaded {loaded_masks} masks\n")
     return cam_infos
 
 def fetchPly(path):
