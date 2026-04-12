@@ -67,6 +67,7 @@ def getNerfppNorm(cam_info):
 
 def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
     cam_infos = []
+    loaded_masks = 0
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
         # the exact output you're looking for:
@@ -98,10 +99,18 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
 
+        masks_folder = os.path.join(os.path.dirname(images_folder), "masks")
+        mask_path = os.path.join(masks_folder, image_name + ".png")
+        if os.path.exists(mask_path):
+            mask = Image.open(mask_path).convert("L").resize(image.size)
+            image.putalpha(mask)  # makes it RGBA
+            loaded_masks += 1
+
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
+    sys.stdout.write(f"Loaded {loaded_masks} masks\n")
     return cam_infos
 
 def fetchPly(path):

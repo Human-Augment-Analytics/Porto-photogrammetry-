@@ -528,11 +528,16 @@ def coarse_training_with_sdf_regularization(args):
                 pred_rgb = pred_rgb.transpose(-1, -2).transpose(-2, -3)  # TODO: Change for torch.permute
                 
                 # Gather rgb ground truth
-                gt_image = nerfmodel.get_gt_image(camera_indices=camera_indices)           
+                gt_image = nerfmodel.get_gt_image(camera_indices=camera_indices)
                 gt_rgb = gt_image.view(-1, sugar.image_height, sugar.image_width, 3)
                 gt_rgb = gt_rgb.transpose(-1, -2).transpose(-2, -3)
-                    
-                # Compute loss 
+
+                # Apply mask: composite GT with background color
+                gt_alpha = nerfmodel.get_gt_alpha_mask(camera_indices=camera_indices)
+                if gt_alpha is not None:
+                    gt_rgb = gt_rgb * gt_alpha + nerfmodel.background[:, None, None] * (1.0 - gt_alpha)
+
+                # Compute loss
                 loss = loss_fn(pred_rgb, gt_rgb)
                         
                 if enforce_entropy_regularization and iteration > start_entropy_regularization_from and iteration < end_entropy_regularization_at:

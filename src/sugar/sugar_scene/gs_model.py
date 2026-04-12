@@ -235,13 +235,24 @@ class GaussianSplattingWrapper:
             gt_image = gt_image.cuda()
         return gt_image.permute(1, 2, 0)
     
+    def get_gt_alpha_mask(self, camera_indices:int):
+        """Returns the ground truth alpha mask for the training camera at the given index.
+
+        Args:
+            camera_indices (int): Index of the camera in the set of cameras.
+
+        Returns:
+            Tensor or None: The alpha mask tensor (1, H, W), or None if no mask exists.
+        """
+        return self.cam_list[camera_indices].gt_alpha_mask
+
     def get_test_gt_image(self, camera_indices:int, to_cuda=False):
         """Returns the ground truth image corresponding to the test camera at the given index.
-        
+
         Args:
             camera_indices (int): Index of the camera in the set of cameras.
             to_cuda (bool, optional): If True, moves the image to GPU. Defaults to False.
-        
+
         Returns:
             Tensor: The ground truth image.
         """
