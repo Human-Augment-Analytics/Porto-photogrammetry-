@@ -17,7 +17,7 @@ from PIL import Image
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from visual_util import predictions_to_glb, predictions_to_ply
+from utils.visual_util import predictions_to_glb, predictions_to_ply
 from vggt.models.vggt import VGGT
 from vggt.utils.load_fn import load_and_preprocess_images
 from vggt.utils.pose_enc import pose_encoding_to_extri_intri
