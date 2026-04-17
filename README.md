@@ -36,11 +36,11 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 ### Setup
 
 ```bash
-git clone --recursive <repository-url>
-cd augenblick
+git clone --recursive <repository-url> porto-photogrammetry
+cd porto-photogrammetry
 
 # Create conda environment
-conda env create -f environment.yml
+conda create --name augenblick python=3.10
 conda activate augenblick
 
 # Initialise submodules (SuGaR, LightGlue, PyTorch3D)
