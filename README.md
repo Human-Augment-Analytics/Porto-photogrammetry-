@@ -276,7 +276,7 @@ Optional foreground masks can be provided as binary PNG files in a `masks/` dire
 
 ## Acknowledgements
 
-This project was developed as part of a course research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, and Bree Wang.
+This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, and Bree Wang.
 
 ## Support
 
