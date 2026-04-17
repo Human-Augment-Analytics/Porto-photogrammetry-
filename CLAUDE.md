@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |----------------|---------|
 | Data preparation | `pipeline/preparation/prepare_uf_dataset.py` |
 | SfM | VGGT (`pipeline/sfm/run_vggt_to_colmap.py`) or COLMAP (`pipeline/sfm/run_colmap.sh`) |
-| Reconstruction | SuGaR (`src/sugar/`), PGSR (`src/pgsr/`), 2DGS (`src/2dgs/`) |
+| Reconstruction | SuGaR (`pipeline/reconstruction/run_sugar.py`), 2DGS (`pipeline/reconstruction/run_2dgs.py`), PGSR (`pipeline/reconstruction/run_pgsr.py`) |
 
 ## Environment Setup
 
@@ -39,7 +39,7 @@ git submodule update --init --recursive
 
 ## pipeline/ -- Orchestration Scripts
 
-The `pipeline/` directory contains the canonical entry points for dataset preparation and structure-from-motion. These are the scripts that should be used for new experiments.
+The `pipeline/` directory contains the canonical entry points for dataset preparation, structure-from-motion, and reconstruction. These are the scripts that should be used for new experiments.
 
 ### Data Preparation
 
@@ -83,6 +83,29 @@ bash pipeline/sfm/run_colmap.sh \
 ```
 
 Runs COLMAP feature extraction, matching, sparse reconstruction, and image undistortion. Outputs undistorted images in `images/` and sparse reconstruction in `sparse/0/`. The intermediate `distorted/` working directory is cleaned up automatically.
+
+### Reconstruction Scripts
+
+Wrapper scripts that orchestrate training and mesh extraction for each backend. All accept a COLMAP scene directory and an output directory.
+
+```bash
+# SuGaR: vanilla 3DGS training + coarse → mesh → refine → textured mesh
+python pipeline/reconstruction/run_sugar.py <scene_dir> <output_dir> \
+    [--gs_iterations 20000] [--iteration_to_load 7000] \
+    [--regularization dn_consistency] [--high_poly] [--refinement_time long]
+
+# 2DGS: training + TSDF mesh extraction
+python pipeline/reconstruction/run_2dgs.py <scene_dir> <output_dir> \
+    [--iterations 30000] [--voxel_size -1.0] [--depth_trunc -1.0] \
+    [--num_cluster 50] [--unbounded]
+
+# PGSR: copies scene, flattens sparse/0/ → sparse/, trains, TSDF mesh extraction
+python pipeline/reconstruction/run_pgsr.py <scene_dir> <output_dir> \
+    [--iterations 30000] [--max_depth 10.0] [--voxel_size 0.001] \
+    [--max_abs_split_points 0] [--opacity_cull_threshold 0.05]
+```
+
+Each script runs the underlying `src/` training and rendering scripts via `subprocess.run()` with `cwd` set to the backend's source directory. PGSR's `run_pgsr.py` handles the sparse directory flattening automatically (PGSR expects `sparse/` not `sparse/0/`).
 
 ---
 
@@ -366,12 +389,9 @@ prepare_uf_dataset.py ──► images/ + masks/
     ▼
 COLMAP scene (images/ + sparse/0/)
     │
-    ├──► src/sugar/gaussian_splatting/train.py → 3DGS checkpoint
-    │    └──► src/sugar/train.py → coarse → mesh → refine → textured mesh (.obj)
+    ├──► run_sugar.py → 3DGS checkpoint → coarse → mesh → refine → textured mesh (.obj)
     │
-    ├──► src/pgsr/train.py → PGSR model
-    │    └──► src/pgsr/render.py → TSDF fusion → mesh (.ply)
+    ├──► run_2dgs.py → 2DGS model → TSDF fusion → mesh (.ply)
     │
-    └──► src/2dgs/train.py → 2DGS model
-         └──► src/2dgs/render.py → TSDF fusion → mesh (.ply)
+    └──► run_pgsr.py → copy + flatten sparse/ → PGSR model → TSDF fusion → mesh (.ply)
 ```
