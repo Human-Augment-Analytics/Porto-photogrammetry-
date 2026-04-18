@@ -206,6 +206,22 @@ python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
 
 Optional foreground masks can be provided as binary PNG files in a `masks/` directory alongside `images/`. Mask filenames should match image stems (e.g., `image001.png` for `image001.jpg`). White pixels indicate foreground; black pixels indicate background.
 
+## Baselines
+
+### Meshroom
+
+Meshroom (AliceVision) is used as the open-source baseline. See [meshroom-setup.md](meshroom-setup.md) for installation instructions.
+
+Once installed and the environment variables are loaded, run a batch reconstruction with:
+
+```bash
+python "$MESHROOM_ROOT/bin/meshroom_batch" \
+    -i <path-to-input-images> \
+    -o <path-to-output-folder> \
+    -p photogrammetry \
+    -s <path-to-save-file>
+```
+
 ## Citations
 
 ```bibtex
@@ -258,6 +274,15 @@ Optional foreground masks can be provided as binary PNG files in a `masks/` dire
     title={A Vote-and-Verify Strategy for Fast Spatial Verification in Image Retrieval},
     booktitle={Asian Conference on Computer Vision (ACCV)},
     year={2016},
+}
+
+@inproceedings{alicevision2021,
+  title={{A}liceVision {M}eshroom: An open-source {3D} reconstruction pipeline},
+  author={Carsten Griwodz and Simone Gasparini and Lilian Calvet and Pierre Gurdjos and Fabien Castan and Benoit Maujean and Gregoire De Lillo and Yann Lanthony},
+  booktitle={Proceedings of the 12th ACM Multimedia Systems Conference - {MMSys '21}},
+  doi = {10.1145/3458305.3478443},
+  publisher = {ACM Press},
+  year = {2021}
 }
 ```
 
