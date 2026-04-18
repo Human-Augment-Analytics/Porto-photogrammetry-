@@ -51,6 +51,18 @@ def main():
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[7_000, 30_000])
     parser.add_argument("--white_background", action="store_true", help="Use white background")
 
+    # Fidelity knobs (forwarded to train.py)
+    parser.add_argument("--lambda_dist", type=float, default=0.0,
+                        help="Distortion loss weight (upstream default 0.0; 100 bounded / 1000 unbounded recommended)")
+    parser.add_argument("--lambda_normal", type=float, default=0.05, help="Normal consistency loss weight")
+    parser.add_argument("--depth_ratio", type=float, default=0.0,
+                        help="Expected (0.0) vs median (1.0) depth blend; 1.0 for bounded scenes")
+    parser.add_argument("--densify_grad_threshold", type=float, default=0.0002,
+                        help="Lower → more Gaussians (more detail, more memory)")
+    parser.add_argument("--densify_until_iter", type=int, default=15_000,
+                        help="Iteration to stop densifying; extend alongside --iterations")
+    parser.add_argument("--opacity_cull", type=float, default=0.05, help="Opacity threshold for pruning")
+
     # Rendering / mesh extraction parameters
     parser.add_argument("--voxel_size", type=float, default=-1.0, help="TSDF voxel size (auto if negative)")
     parser.add_argument("--depth_trunc", type=float, default=-1.0, help="Max depth for TSDF (auto if negative)")
@@ -80,6 +92,12 @@ def main():
         "--iterations", str(args.iterations),
         "--test_iterations", *[str(i) for i in args.test_iterations],
         "--save_iterations", *[str(i) for i in args.save_iterations],
+        "--lambda_dist", str(args.lambda_dist),
+        "--lambda_normal", str(args.lambda_normal),
+        "--depth_ratio", str(args.depth_ratio),
+        "--densify_grad_threshold", str(args.densify_grad_threshold),
+        "--densify_until_iter", str(args.densify_until_iter),
+        "--opacity_cull", str(args.opacity_cull),
     ]
     if args.white_background:
         train_cmd.append("--white_background")

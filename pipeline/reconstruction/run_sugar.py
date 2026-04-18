@@ -48,6 +48,12 @@ def main():
 
     # 3DGS parameters
     parser.add_argument("--gs_iterations", type=int, default=20_000, help="Vanilla 3DGS training iterations")
+    parser.add_argument("--gs_densify_grad_threshold", type=float, default=0.0002,
+                        help="Lower → denser Gaussian cloud (more detail, more memory)")
+    parser.add_argument("--gs_densify_until_iter", type=int, default=15_000,
+                        help="Iteration to stop densifying; extend alongside --gs_iterations")
+    parser.add_argument("--gs_lambda_dssim", type=float, default=0.2, help="SSIM loss weight for 3DGS")
+    parser.add_argument("--gs_sh_degree", type=int, default=3, help="Max spherical harmonics degree")
 
     # SuGaR parameters
     parser.add_argument("--iteration_to_load", type=int, default=7_000, help="3DGS iteration to load for SuGaR")
@@ -62,6 +68,10 @@ def main():
     parser.add_argument("--high_poly", action="store_true", help="1M vertices, 1 gaussian/triangle")
     parser.add_argument("--refinement_time", type=str, default=None, choices=["short", "medium", "long"],
                         help="Preset refinement duration (2k/7k/15k iterations)")
+    parser.add_argument("--square_size", type=int, default=8,
+                        help="UV texture square size (larger → finer baked texture)")
+    parser.add_argument("--postprocess_mesh", action="store_true",
+                        help="Remove low-density border triangles (risky; can help single-sided objects)")
     parser.add_argument("--white_background", action="store_true", help="Use white background")
     parser.add_argument("--gpu", type=int, default=0, help="GPU device index")
 
@@ -87,6 +97,10 @@ def main():
             "-s", str(scene_dir),
             "-m", str(gs_model_dir),
             "--iterations", str(args.gs_iterations),
+            "--densify_grad_threshold", str(args.gs_densify_grad_threshold),
+            "--densify_until_iter", str(args.gs_densify_until_iter),
+            "--lambda_dssim", str(args.gs_lambda_dssim),
+            "--sh_degree", str(args.gs_sh_degree),
         ],
         cwd=str(SUGAR_DIR),
     )
@@ -107,8 +121,12 @@ def main():
         "-v", str(args.n_vertices),
         "-g", str(args.gaussians_per_triangle),
         "-f", str(args.refinement_iterations),
+        "--square_size", str(args.square_size),
+        "--eval", "False",
         "--gpu", str(args.gpu),
     ]
+    if args.postprocess_mesh:
+        sugar_cmd += ["--postprocess_mesh", "True"]
     if args.low_poly:
         sugar_cmd += ["--low_poly", "True"]
     if args.high_poly:

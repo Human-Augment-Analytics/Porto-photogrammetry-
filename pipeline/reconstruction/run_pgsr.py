@@ -59,7 +59,10 @@ def prepare_scene(scene_dir: Path, output_dir: Path) -> Path:
         return pgsr_scene
 
     logger.info(f"Copying scene from {scene_dir} to {pgsr_scene}")
-    shutil.copytree(scene_dir, pgsr_scene)
+    for subdir in ["images", "masks", "sparse"]:
+        src = scene_dir / subdir
+        dst = pgsr_scene / subdir
+        shutil.copytree(src, dst)
 
     sparse_0 = pgsr_scene / "sparse" / "0"
     sparse = pgsr_scene / "sparse"
@@ -89,10 +92,27 @@ def main():
     parser.add_argument("--opacity_cull_threshold", type=float, default=0.05, help="Opacity threshold for pruning")
     parser.add_argument("--white_background", action="store_true", help="Use white background")
 
+    # Fidelity knobs (forwarded to train.py)
+    parser.add_argument("--lambda_dssim", type=float, default=0.2, help="SSIM loss weight")
+    parser.add_argument("--single_view_weight", type=float, default=0.015,
+                        help="Normal consistency weight (raise for sharper surfaces)")
+    parser.add_argument("--multi_view_ncc_weight", type=float, default=0.15,
+                        help="NCC patch-matching weight (cross-view photometric consistency)")
+    parser.add_argument("--multi_view_geo_weight", type=float, default=0.03,
+                        help="Multi-view geometric consistency weight")
+    parser.add_argument("--multi_view_num", type=int, default=8,
+                        help="Number of nearest views per frame for multi-view losses")
+    parser.add_argument("--densify_grad_threshold", type=float, default=0.0002,
+                        help="Lower → more Gaussians (more detail, more memory)")
+    parser.add_argument("--densify_until_iter", type=int, default=15_000,
+                        help="Iteration to stop densifying; extend alongside --iterations")
+
     # Rendering / mesh extraction parameters
     parser.add_argument("--max_depth", type=float, default=10.0, help="Max depth for TSDF integration")
     parser.add_argument("--voxel_size", type=float, default=0.001, help="TSDF voxel size")
     parser.add_argument("--num_cluster", type=int, default=1, help="Connected components to keep in mesh")
+    parser.add_argument("--use_depth_filter", action="store_true",
+                        help="Drop grazing-angle depths before TSDF fusion")
     parser.add_argument("--skip_mesh", action="store_true", help="Skip mesh extraction (render only)")
 
     args = parser.parse_args()
@@ -115,12 +135,19 @@ def main():
     train_cmd = [
         sys.executable, str(TRAIN_SCRIPT),
         "-s", str(pgsr_scene),
-        "-m", str(pgsr_scene),
+        "-m", str(output_dir),
         "--iterations", str(args.iterations),
         "--test_iterations", *[str(i) for i in args.test_iterations],
         "--save_iterations", *[str(i) for i in args.save_iterations],
         "--max_abs_split_points", str(args.max_abs_split_points),
         "--opacity_cull_threshold", str(args.opacity_cull_threshold),
+        "--lambda_dssim", str(args.lambda_dssim),
+        "--single_view_weight", str(args.single_view_weight),
+        "--multi_view_ncc_weight", str(args.multi_view_ncc_weight),
+        "--multi_view_geo_weight", str(args.multi_view_geo_weight),
+        "--multi_view_num", str(args.multi_view_num),
+        "--densify_grad_threshold", str(args.densify_grad_threshold),
+        "--densify_until_iter", str(args.densify_until_iter),
     ]
     if args.white_background:
         train_cmd.append("--white_background")
@@ -133,12 +160,14 @@ def main():
     t0 = time.time()
     render_cmd = [
         sys.executable, str(RENDER_SCRIPT),
-        "-m", str(pgsr_scene),
+        "-m", str(output_dir),
         "--max_depth", str(args.max_depth),
         "--voxel_size", str(args.voxel_size),
         "--num_cluster", str(args.num_cluster),
         "--skip_test",
     ]
+    if args.use_depth_filter:
+        render_cmd.append("--use_depth_filter")
     if args.skip_mesh:
         render_cmd.append("--skip_train")
     run(render_cmd, cwd=str(PGSR_DIR))
