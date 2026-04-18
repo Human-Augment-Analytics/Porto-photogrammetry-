@@ -212,7 +212,14 @@ Optional foreground masks can be provided as binary PNG files in a `masks/` dire
 
 Meshroom (AliceVision) is used as the open-source baseline. See [meshroom-setup.md](meshroom-setup.md) for installation instructions.
 
-Once installed and the environment variables are loaded, run a batch reconstruction with:
+Once installed and `MESHROOM_ROOT` is set, run the wrapper script to execute a batch reconstruction and log runtime:
+
+```bash
+python baseline/benchmark_meshroom.py /path/to/scene/images/ /output/meshroom/ \
+    --save_file /output/meshroom/graph.mg
+```
+
+The wrapper resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), runs the `photogrammetry` pipeline by default, and prints total runtime on completion. To invoke `meshroom_batch` directly instead:
 
 ```bash
 python "$MESHROOM_ROOT/bin/meshroom_batch" \
