@@ -88,7 +88,7 @@ def predictions_to_glb(
             import onnxruntime
 
             skyseg_session = None
-            target_dir_images = target_dir + "/images"
+            target_dir_images = os.path.join(target_dir, "images")
             image_list = sorted(os.listdir(target_dir_images))
             sky_mask_list = []
 

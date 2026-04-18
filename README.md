@@ -152,6 +152,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 python pipeline/sfm/run_vggt_to_colmap.py \
     --input_dir /path/to/scene/ \
     --output_dir /output/vggt_mask/ \
+    --conf_thres_value 1.0
 
 # Classical COLMAP
 bash pipeline/sfm/run_colmap.sh \

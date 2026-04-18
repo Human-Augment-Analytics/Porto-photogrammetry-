@@ -32,7 +32,7 @@ def load_gs_cameras(source_path, gs_output_path, image_resolution=1,
     image_dir = os.path.join(source_path, 'images')
     masks_dir = os.path.join(source_path, 'masks')
 
-    with open(gs_output_path + 'cameras.json') as f:
+    with open(os.path.join(gs_output_path, 'cameras.json')) as f:
         unsorted_camera_transforms = json.load(f)
         
     # Remove indices

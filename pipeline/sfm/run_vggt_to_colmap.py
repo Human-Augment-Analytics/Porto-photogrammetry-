@@ -67,7 +67,7 @@ def parse_args():
         "--fine_tracking", action="store_true", default=True, help="Use fine tracking (slower but more accurate)"
     )
     parser.add_argument(
-        "--conf_thres_value", type=float, default=5.0, help="Confidence threshold value for depth filtering (wo BA)"
+        "--conf_thres_value", type=float, default=1.0, help="Confidence threshold value for depth filtering (wo BA)"
     )
     return parser.parse_args()
 
@@ -293,7 +293,7 @@ def main(args):
         shift_point2d_to_original_res=True,
         shared_camera=shared_camera,
     )
-    logger.info(f"Saving reconstruction to {args.output_dir}/sparse/0/")
+    logger.info("Saving reconstruction to %s", os.path.join(args.output_dir, "sparse", "0"))
     sparse_reconstruction_dir = os.path.join(args.output_dir, "sparse", "0")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
@@ -334,7 +334,8 @@ def main(args):
 
 
 def rename_colmap_recons_and_rescale_camera(
-    reconstruction, image_paths, original_coords, img_size, shift_point2d_to_original_res=False, shared_camera=False
+    reconstruction, image_paths, original_coords, img_size, shift_point2d_to_original_res=False, shared_camera=False,
+    original_coords_img_size=1024,
 ):
     rescale_camera = True
 
@@ -360,8 +361,10 @@ def rename_colmap_recons_and_rescale_camera(
             pycamera.height = real_image_size[1]
 
         if shift_point2d_to_original_res:
-            # Also shift the point2D to original resolution
-            top_left = original_coords[pyimageid - 1, :2]
+            # original_coords was produced by the loader at original_coords_img_size;
+            # rescale top_left into the reconstruction's img_size units before shifting.
+            coord_scale = img_size / original_coords_img_size
+            top_left = original_coords[pyimageid - 1, :2] * coord_scale
 
             for point2D in pyimage.points2D:
                 point2D.xy = (point2D.xy - top_left) * resize_ratio

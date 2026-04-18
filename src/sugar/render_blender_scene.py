@@ -44,7 +44,7 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     scene_name = os.path.splitext(os.path.basename(args.package_path))[0]
-    output_path = args.output_path if args.output_path else f"./output/blender/renders/{scene_name}"
+    output_path = args.output_path if args.output_path else os.path.join(".", "output", "blender", "renders", scene_name)
     sh_degree = args.sh_degree
     deformation_threshold = args.deformation_threshold
     frame_to_export_as_ply = args.export_frame_as_ply - 1
