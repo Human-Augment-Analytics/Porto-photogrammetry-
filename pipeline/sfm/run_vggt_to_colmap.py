@@ -12,6 +12,7 @@ import glob
 import os
 import copy
 import shutil
+import time
 import torch
 import torch.nn.functional as F
 
@@ -115,10 +116,14 @@ def run_VGGT(model, images, masks, dtype, resolution=518):
 
 
 def main(args):
-    logger.info(f"Input:     {args.input_dir}")
-    logger.info(f"Output:    {args.output_dir}")
-    logger.info(f"Use BA:    {args.use_ba}")
-    logger.info(f"Use masks: {args.use_masks}")
+    logger.info("=" * 60)
+    logger.info("VGGT to COLMAP Pipeline")
+    logger.info(f"  Input:     {args.input_dir}")
+    logger.info(f"  Output:    {args.output_dir}")
+    logger.info(f"  Use BA:    {args.use_ba}")
+    logger.info(f"  Use masks: {args.use_masks}")
+    logger.info("=" * 60)
+    t_start = time.time()
 
     # Set seed for reproducibility
     np.random.seed(args.seed)
@@ -136,12 +141,14 @@ def main(args):
     logger.info(f"Using dtype: {dtype}")
 
     # Run VGGT for camera and depth estimation
+    t0 = time.time()
     model = VGGT()
     _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
     model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
     model.eval()
     model = model.to(device)
-    logger.info("Model loaded")
+    load_time = time.time() - t0
+    logger.info(f"Model loaded in {load_time:.1f}s")
 
     # Get image paths and preprocess them
     image_dir = os.path.join(args.input_dir, "images")
@@ -177,10 +184,14 @@ def main(args):
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
+    t0 = time.time()
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, masks, dtype, vggt_fixed_resolution)
     points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
+    vggt_time = time.time() - t0
+    logger.info(f"VGGT inference completed in {vggt_time:.1f}s")
 
     if args.use_ba:
+        t0 = time.time()
         image_size = np.array(images.shape[-2:])
         scale = img_load_resolution / vggt_fixed_resolution
         shared_camera = args.shared_camera
@@ -232,6 +243,8 @@ def main(args):
         pycolmap.bundle_adjustment(reconstruction, ba_options)
 
         reconstruction_resolution = img_load_resolution
+        ba_time = time.time() - t0
+        logger.info(f"Tracking + bundle adjustment completed in {ba_time:.1f}s")
     else:
         conf_thres_value = args.conf_thres_value
         max_points_for_colmap = 100000  # randomly sample 3D points
@@ -310,6 +323,13 @@ def main(args):
     
     logger.info(f"Copied {len(image_path_list)} images to {images_out_dir}")
     logger.info(f"Copied {n_masks} masks to {masks_out_dir}")
+
+    total_time = time.time() - t_start
+    logger.info("=" * 60)
+    logger.info("Pipeline complete")
+    logger.info(f"  Total time: {total_time:.1f}s")
+    logger.info(f"  Output:     {args.output_dir}")
+    logger.info("=" * 60)
 
     return True
 

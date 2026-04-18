@@ -98,12 +98,15 @@ echo "  Matcher:       $MATCHER"
 echo "  COLMAP:        $COLMAP_BIN"
 echo ""
 
+PIPELINE_START=$(date +%s)
+
 # ============================================================
 # Step 1: Feature Extraction
 # ============================================================
 echo "=========================================="
 echo "Step 1/6: Feature Extraction"
 echo "=========================================="
+STEP_START=$(date +%s)
 
 mkdir -p "${WORK_DIR}/sparse"
 
@@ -115,6 +118,9 @@ $COLMAP_BIN feature_extractor \
     --SiftExtraction.use_gpu "$USE_GPU" \
     --SiftExtraction.num_threads 4
 
+FEATURE_EXTRACT_TIME=$(( $(date +%s) - STEP_START ))
+echo "Feature extraction completed in ${FEATURE_EXTRACT_TIME}s"
+
 # ============================================================
 # Step 2: Feature Matching
 # ============================================================
@@ -122,6 +128,7 @@ echo ""
 echo "=========================================="
 echo "Step 2/6: Feature Matching ($MATCHER)"
 echo "=========================================="
+STEP_START=$(date +%s)
 
 case "$MATCHER" in
     exhaustive)
@@ -144,6 +151,9 @@ case "$MATCHER" in
         exit 1 ;;
 esac
 
+MATCHING_TIME=$(( $(date +%s) - STEP_START ))
+echo "Feature matching completed in ${MATCHING_TIME}s"
+
 # ============================================================
 # Step 3: Sparse Reconstruction (Mapper)
 # ============================================================
@@ -151,12 +161,16 @@ echo ""
 echo "=========================================="
 echo "Step 3/6: Sparse Reconstruction (Mapper)"
 echo "=========================================="
+STEP_START=$(date +%s)
 
 $COLMAP_BIN mapper \
     --database_path "$DATABASE" \
     --image_path "$IMAGE_PATH" \
     --output_path "${WORK_DIR}/sparse" \
     --Mapper.ba_global_function_tolerance 0.000001
+
+MAPPER_TIME=$(( $(date +%s) - STEP_START ))
+echo "Mapping completed in ${MAPPER_TIME}s"
 
 # ============================================================
 # Step 4: Image Undistortion
@@ -165,6 +179,7 @@ echo ""
 echo "=========================================="
 echo "Step 4/6: Image Undistortion"
 echo "=========================================="
+STEP_START=$(date +%s)
 
 if [ ! -d "$MODEL_PATH" ]; then
     echo "ERROR: Refined sparse model not found at $MODEL_PATH before image undistortion"
@@ -176,6 +191,9 @@ $COLMAP_BIN image_undistorter \
     --input_path "$MODEL_PATH" \
     --output_path "$OUTPUT_PATH" \
     --output_type COLMAP
+
+UNDISTORT_TIME=$(( $(date +%s) - STEP_START ))
+echo "Image undistortion completed in ${UNDISTORT_TIME}s"
 
 # ============================================================
 # Step 5: Move sparse files into sparse/0/
@@ -218,11 +236,17 @@ rm -rf "$WORK_DIR"
 # ============================================================
 # Summary
 # ============================================================
+TOTAL_TIME=$(( $(date +%s) - PIPELINE_START ))
 echo ""
 echo "=========================================="
 echo "COLMAP reconstruction complete!"
 echo "=========================================="
-echo "  Output:   $OUTPUT_PATH"
-echo "  Images:   $(ls "$OUTPUT_PATH/images" 2>/dev/null | wc -l) undistorted images"
-echo "  Sparse:   $OUTPUT_PATH/sparse/0/"
+echo "  Output:            $OUTPUT_PATH"
+echo "  Images:            $(ls "$OUTPUT_PATH/images" 2>/dev/null | wc -l) undistorted images"
+echo "  Sparse:            $OUTPUT_PATH/sparse/0/"
+echo "  Feature extract:   ${FEATURE_EXTRACT_TIME}s"
+echo "  Feature matching:  ${MATCHING_TIME}s"
+echo "  Mapper:            ${MAPPER_TIME}s"
+echo "  Undistortion:      ${UNDISTORT_TIME}s"
+echo "  Total:             ${TOTAL_TIME}s"
 echo ""
