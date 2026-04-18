@@ -313,13 +313,12 @@ def main(args):
         if not os.path.exists(img_dst_path):
             shutil.copy2(img_src_path, img_dst_path)
         
-        if args.use_masks:
-            mask_src_path = os.path.join(mask_dir, f"{img_stem}.png")
-            if os.path.exists(mask_src_path):
-                mask_dst_path = os.path.join(masks_out_dir, f"{img_stem}.png")
-                if not os.path.exists(mask_dst_path):
-                    shutil.copy2(mask_src_path, mask_dst_path)
-                n_masks += 1
+        mask_src_path = os.path.join(mask_dir, f"{img_stem}.png")
+        if os.path.exists(mask_src_path):
+            mask_dst_path = os.path.join(masks_out_dir, f"{img_stem}.png")
+            if not os.path.exists(mask_dst_path):
+                shutil.copy2(mask_src_path, mask_dst_path)
+            n_masks += 1
     
     logger.info(f"Copied {len(image_path_list)} images to {images_out_dir}")
     logger.info(f"Copied {n_masks} masks to {masks_out_dir}")

@@ -155,7 +155,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 
 # Classical COLMAP
 bash pipeline/sfm/run_colmap.sh \
-    --image_path /path/to/scene/images/ \
+    --input_path /path/to/scene/ \
     --output_path /output/colmap/
 ```
 

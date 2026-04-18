@@ -23,11 +23,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-def run(cmd, cwd=None):
+def run(cmd, cwd=None, env=None):
     """Run a command, streaming output to the terminal."""
     logger.info(f"Running: {' '.join(cmd)}")
     logger.info(f"  cwd: {cwd or os.getcwd()}")
-    result = subprocess.run(cmd, cwd=cwd)
+    result = subprocess.run(cmd, cwd=cwd, env=env)
     if result.returncode != 0:
         logger.error(f"Command failed with return code {result.returncode}")
         sys.exit(result.returncode)
@@ -62,24 +62,29 @@ def main():
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    pipeline = "photogrammetry"
+
     logger.info("=" * 60)
     logger.info("Meshroom Baseline Pipeline")
     logger.info(f"  Input:    {input_images}")
     logger.info(f"  Output:   {output_dir}")
-    logger.info(f"  Pipeline: {args.pipeline}")
+    logger.info(f"  Pipeline: {pipeline}")
     logger.info("=" * 60)
 
     cmd = [
         sys.executable, str(meshroom_batch),
         "-i", str(input_images),
         "-o", str(output_dir),
-        "-p", "photogrammetry",
+        "-p", pipeline,
     ]
     if args.save_file is not None:
         cmd += ["-s", str(args.save_file.resolve())]
 
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(meshroom_root), env.get("PYTHONPATH", "")]))
+
     t0 = time.time()
-    run(cmd)
+    run(cmd, env=env)
     elapsed = time.time() - t0
 
     logger.info("=" * 60)

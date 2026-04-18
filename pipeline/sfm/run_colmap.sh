@@ -16,10 +16,10 @@
 #           └── points3D.ply
 #
 # Usage:
-#   bash scripts/run_colmap.sh --image_path /path/to/images --output_path /path/to/output
+#   bash scripts/run_colmap.sh --input_path /path/to/dataset --output_path /path/to/output
 #
 # All flags:
-#   --image_path      Path to source images (required)
+#   --input_path      Path to source dataset (required)
 #   --output_path     Path for COLMAP output (required)
 #   --camera_model    Camera model: SIMPLE_RADIAL, PINHOLE, OPENCV, etc. (default: PINHOLE)
 #   --single_camera   Use a shared camera for all images: 0 or 1 (default: 1)
@@ -57,7 +57,7 @@ print_usage() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      print_usage;       exit 0 ;;
-        --image_path)   IMAGE_PATH="$2";   shift 2 ;;
+        --input_path)   INPUT_PATH="$2";   shift 2 ;;
         --output_path)  OUTPUT_PATH="$2";  shift 2 ;;
         --camera_model) CAMERA_MODEL="$2"; shift 2 ;;
         --single_camera) SINGLE_CAMERA="$2"; shift 2 ;;
@@ -71,12 +71,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [ -z "$IMAGE_PATH" ] || [ -z "$OUTPUT_PATH" ]; then
+if [ -z "$INPUT_PATH" ] || [ -z "$OUTPUT_PATH" ]; then
     echo "ERROR: --image_path and --output_path are required."
     print_usage
     exit 1
 fi
 
+IMAGE_PATH="${INPUT_PATH}/images"
+MASK_PATH="${INPUT_PATH}/masks"
 if [ ! -d "$IMAGE_PATH" ]; then
     echo "ERROR: Image directory not found: $IMAGE_PATH"
     exit 1
@@ -90,6 +92,7 @@ echo "=========================================="
 echo "COLMAP Sparse Reconstruction"
 echo "=========================================="
 echo "  Images:        $IMAGE_PATH"
+echo "  Masks:         $MASK_PATH"
 echo "  Output:        $OUTPUT_PATH"
 echo "  Camera model:  $CAMERA_MODEL"
 echo "  Single camera: $SINGLE_CAMERA"
@@ -220,8 +223,9 @@ echo "=========================================="
 echo "Step 6/6: Copy masks from input directory (if any)"
 echo "=========================================="
 
-if [ -d "$INPUT_PATH/masks" ]; then
-    cp "$INPUT_PATH/masks/"* "$OUTPUT_PATH/masks/"
+if [ -d "$MASK_PATH" ]; then
+    mkdir -p "$OUTPUT_PATH/masks"
+    cp "$MASK_PATH/"* "$OUTPUT_PATH/masks/"
 fi
 
 echo "Done."

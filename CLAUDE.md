@@ -65,7 +65,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
     [--conf_thres_value 5.0]    # depth confidence threshold (no-BA mode)
 ```
 
-Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sparse/0/`), copies images and masks to the output directory, and exports a `points.ply` visualization. The output directory is ready to be consumed by any of the reconstruction backends. Logs per-stage runtimes (model load, VGGT inference, optional tracking + BA) and a total-time summary.
+Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sparse/0/`), copies images to the output directory, and exports a `points.ply` visualization. Masks are always copied to `<output>/masks/` when they exist in `<input>/masks/`, regardless of `--use_masks` (the flag only controls whether masks weight the depth confidence during reconstruction). The output directory is ready to be consumed by any of the reconstruction backends. Logs per-stage runtimes (model load, VGGT inference, optional tracking + BA) and a total-time summary.
 
 **Two modes:**
 - **Without BA (default):** Uses VGGT's depth maps and camera predictions directly. Filters 3D points by `conf_thres_value`, randomly subsamples to 100k points, writes COLMAP with PINHOLE camera model at 518px resolution, then rescales to original resolution.
@@ -75,7 +75,7 @@ Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sp
 
 ```bash
 bash pipeline/sfm/run_colmap.sh \
-    --image_path <images_dir> \
+    --input_path <dataset_dir> \
     --output_path <output_dir> \
     [--camera_model PINHOLE] \
     [--single_camera 1] \
@@ -83,7 +83,7 @@ bash pipeline/sfm/run_colmap.sh \
     [--no_gpu]
 ```
 
-Runs COLMAP feature extraction, matching, sparse reconstruction, and image undistortion. Outputs undistorted images in `images/` and sparse reconstruction in `sparse/0/`. The intermediate `distorted/` working directory is cleaned up automatically. Prints per-step and total runtimes (via `date +%s`) in the final summary.
+`--input_path` is a dataset directory containing an `images/` subdirectory (and optionally `masks/`); the script derives `IMAGE_PATH=<input>/images` and `MASK_PATH=<input>/masks` internally. Runs COLMAP feature extraction, matching, sparse reconstruction, and image undistortion. Outputs undistorted images in `images/` and sparse reconstruction in `sparse/0/`. If `<input>/masks/` exists, it is copied to `<output>/masks/`. The intermediate `distorted/` working directory is cleaned up automatically. Prints per-step and total runtimes (via `date +%s`) in the final summary.
 
 ### Reconstruction Scripts
 
@@ -118,12 +118,11 @@ Thin wrappers around third-party photogrammetry tools used as qualitative compar
 
 ```bash
 python baseline/benchmark_meshroom.py <input_images> <output_dir> \
-    [--pipeline photogrammetry] \
     [--save_file <path.mg>] \
     [--meshroom_root <path>]
 ```
 
-Resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), invokes the `photogrammetry` pipeline template by default, and logs total runtime. Installation/env-var setup is documented in `meshroom-setup.md`.
+Resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), invokes the hardcoded `photogrammetry` pipeline template, and logs total runtime. Prepends `$MESHROOM_ROOT` to `PYTHONPATH` before invoking `meshroom_batch` so its Python modules resolve. Installation/env-var setup is documented in `meshroom-setup.md` (the setup doc includes a dedicated `meshroom` conda env for the batch CLI).
 
 ---
 
