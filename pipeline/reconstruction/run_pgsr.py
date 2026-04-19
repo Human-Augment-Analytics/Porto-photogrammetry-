@@ -179,8 +179,8 @@ def main():
     logger.info(f"  Train time:  {train_time:.1f}s")
     logger.info(f"  Render time: {render_time:.1f}s")
     logger.info(f"  Total:       {train_time + render_time:.1f}s")
-    logger.info(f"  Scene:       {pgsr_scene}")
-    logger.info(f"  Mesh:        {pgsr_scene / 'mesh' / 'tsdf_fusion_post.ply'}")
+    logger.info(f"  Scene:       {output_dir}")
+    logger.info(f"  Mesh:        {output_dir / 'mesh' / 'tsdf_fusion_post.ply'}")
     logger.info("=" * 60)
 
 
