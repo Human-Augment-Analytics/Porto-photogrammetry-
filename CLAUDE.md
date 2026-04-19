@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |----------------|---------|
 | Data preparation | `pipeline/preparation/prepare_uf_dataset.py` |
 | SfM | VGGT (`pipeline/sfm/run_vggt_to_colmap.py`) or COLMAP (`pipeline/sfm/run_colmap.sh`) |
-| Reconstruction | SuGaR (`src/sugar/`), PGSR (`src/pgsr/`), 2DGS (`src/2dgs/`) |
+| Reconstruction | SuGaR (`pipeline/reconstruction/run_sugar.py`), 2DGS (`pipeline/reconstruction/run_2dgs.py`), PGSR (`pipeline/reconstruction/run_pgsr.py`) |
+| Baseline | Meshroom (`baseline/benchmark_meshroom.py`) |
 
 ## Environment Setup
 
@@ -39,7 +40,7 @@ git submodule update --init --recursive
 
 ## pipeline/ -- Orchestration Scripts
 
-The `pipeline/` directory contains the canonical entry points for dataset preparation and structure-from-motion. These are the scripts that should be used for new experiments.
+The `pipeline/` directory contains the canonical entry points for dataset preparation, structure-from-motion, and reconstruction. These are the scripts that should be used for new experiments.
 
 ### Data Preparation
 
@@ -64,7 +65,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
     [--conf_thres_value 5.0]    # depth confidence threshold (no-BA mode)
 ```
 
-Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sparse/0/`), copies images and masks to the output directory, and exports a `points.ply` visualization. The output directory is ready to be consumed by any of the reconstruction backends.
+Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sparse/0/`), copies images to the output directory, and exports a `points.ply` visualization. Masks are always copied to `<output>/masks/` when they exist in `<input>/masks/`, regardless of `--use_masks` (the flag only controls whether masks weight the depth confidence during reconstruction). The output directory is ready to be consumed by any of the reconstruction backends. Logs per-stage runtimes (model load, VGGT inference, optional tracking + BA) and a total-time summary.
 
 **Two modes:**
 - **Without BA (default):** Uses VGGT's depth maps and camera predictions directly. Filters 3D points by `conf_thres_value`, randomly subsamples to 100k points, writes COLMAP with PINHOLE camera model at 518px resolution, then rescales to original resolution.
@@ -74,7 +75,7 @@ Runs VGGT inference, converts predictions to a COLMAP sparse reconstruction (`sp
 
 ```bash
 bash pipeline/sfm/run_colmap.sh \
-    --image_path <images_dir> \
+    --input_path <dataset_dir> \
     --output_path <output_dir> \
     [--camera_model PINHOLE] \
     [--single_camera 1] \
@@ -82,7 +83,46 @@ bash pipeline/sfm/run_colmap.sh \
     [--no_gpu]
 ```
 
-Runs COLMAP feature extraction, matching, sparse reconstruction, and image undistortion. Outputs undistorted images in `images/` and sparse reconstruction in `sparse/0/`. The intermediate `distorted/` working directory is cleaned up automatically.
+`--input_path` is a dataset directory containing an `images/` subdirectory (and optionally `masks/`); the script derives `IMAGE_PATH=<input>/images` and `MASK_PATH=<input>/masks` internally. Runs COLMAP feature extraction, matching, sparse reconstruction, and image undistortion. Outputs undistorted images in `images/` and sparse reconstruction in `sparse/0/`. If `<input>/masks/` exists, it is copied to `<output>/masks/`. The intermediate `distorted/` working directory is cleaned up automatically. Prints per-step and total runtimes (via `date +%s`) in the final summary.
+
+### Reconstruction Scripts
+
+Wrapper scripts that orchestrate training and mesh extraction for each backend. All accept a COLMAP scene directory and an output directory.
+
+```bash
+# SuGaR: vanilla 3DGS training + coarse → mesh → refine → textured mesh
+python pipeline/reconstruction/run_sugar.py <scene_dir> <output_dir> \
+    [--gs_iterations 20000] [--iteration_to_load 7000] \
+    [--regularization dn_consistency] [--high_poly] [--refinement_time long]
+
+# 2DGS: training + TSDF mesh extraction
+python pipeline/reconstruction/run_2dgs.py <scene_dir> <output_dir> \
+    [--iterations 30000] [--voxel_size -1.0] [--depth_trunc -1.0] \
+    [--num_cluster 50] [--unbounded]
+
+# PGSR: copies scene, flattens sparse/0/ → sparse/, trains, TSDF mesh extraction
+python pipeline/reconstruction/run_pgsr.py <scene_dir> <output_dir> \
+    [--iterations 30000] [--max_depth 10.0] [--voxel_size 0.001] \
+    [--max_abs_split_points 0] [--opacity_cull_threshold 0.05]
+```
+
+Each script runs the underlying `src/` training and rendering scripts via `subprocess.run()` with `cwd` set to the backend's source directory. PGSR's `run_pgsr.py` handles the sparse directory flattening automatically (PGSR expects `sparse/` not `sparse/0/`).
+
+---
+
+## baseline/ -- Baseline Wrappers
+
+Thin wrappers around third-party photogrammetry tools used as qualitative comparisons. They match the logging style of `pipeline/reconstruction/run_2dgs.py` (banner, `subprocess.run`, total-time summary).
+
+### Meshroom (AliceVision)
+
+```bash
+python baseline/benchmark_meshroom.py <input_images> <output_dir> \
+    [--save_file <path.mg>] \
+    [--meshroom_root <path>]
+```
+
+Resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), invokes the hardcoded `photogrammetry` pipeline template, and logs total runtime. Prepends `$MESHROOM_ROOT` to `PYTHONPATH` before invoking `meshroom_batch` so its Python modules resolve. Installation/env-var setup is documented in `meshroom-setup.md` (the setup doc includes a dedicated `meshroom` conda env for the batch CLI).
 
 ---
 
@@ -366,12 +406,9 @@ prepare_uf_dataset.py ──► images/ + masks/
     ▼
 COLMAP scene (images/ + sparse/0/)
     │
-    ├──► src/sugar/gaussian_splatting/train.py → 3DGS checkpoint
-    │    └──► src/sugar/train.py → coarse → mesh → refine → textured mesh (.obj)
+    ├──► run_sugar.py → 3DGS checkpoint → coarse → mesh → refine → textured mesh (.obj)
     │
-    ├──► src/pgsr/train.py → PGSR model
-    │    └──► src/pgsr/render.py → TSDF fusion → mesh (.ply)
+    ├──► run_2dgs.py → 2DGS model → TSDF fusion → mesh (.ply)
     │
-    └──► src/2dgs/train.py → 2DGS model
-         └──► src/2dgs/render.py → TSDF fusion → mesh (.ply)
+    └──► run_pgsr.py → copy + flatten sparse/ → PGSR model → TSDF fusion → mesh (.ply)
 ```

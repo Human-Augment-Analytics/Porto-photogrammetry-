@@ -79,9 +79,13 @@ augenblick/
 ├── pipeline/                  # Canonical entry points
 │   ├── preparation/           #   Dataset preparation scripts
 │   │   └── prepare_uf_dataset.py
-│   └── sfm/                   #   Structure-from-Motion scripts
-│       ├── run_vggt_to_colmap.py
-│       └── run_colmap.sh
+│   ├── sfm/                   #   Structure-from-Motion scripts
+│   │   ├── run_vggt_to_colmap.py
+│   │   └── run_colmap.sh
+│   └── reconstruction/        #   Surface reconstruction scripts
+│       ├── run_sugar.py
+│       ├── run_2dgs.py
+│       └── run_pgsr.py
 ├── src/
 │   ├── vggt/                  # VGGT model (Meta)
 │   │   └── vggt/              #   Importable Python package
@@ -148,10 +152,11 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 python pipeline/sfm/run_vggt_to_colmap.py \
     --input_dir /path/to/scene/ \
     --output_dir /output/vggt_mask/ \
+    --conf_thres_value 1.0
 
 # Classical COLMAP
 bash pipeline/sfm/run_colmap.sh \
-    --image_path /path/to/scene/images/ \
+    --input_path /path/to/scene/ \
     --output_path /output/colmap/
 ```
 
@@ -162,41 +167,24 @@ Replace `<sfm>` below with the SfM output directory (e.g., `/output/vggt_ba/`).
 #### SuGaR
 
 ```bash
-# Train vanilla 3DGS (prerequisite)
-python src/sugar/gaussian_splatting/train.py \
-    -s <sfm> -m /output/sugar/gs_model/ --iterations 20000
-
-# Train SuGaR and extract textured mesh
-cd src/sugar/
-python train.py \
-    -s <sfm> \
-    -c /output/sugar/gs_model/ \
-    -o /output/sugar/mesh/ \
-    -i 7000 -r dn_consistency \
-    --high_poly --refinement_time long \
-    --white_background True
+python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
+    --gs_iterations 20000 --iteration_to_load 7000 \
+    --regularization dn_consistency --high_poly --refinement_time long \
+    --white_background
 ```
 
 #### 2DGS
 
 ```bash
-cd src/2dgs/
-python train.py -s <sfm> -m /output/2dgs/model/
-python render.py -s <sfm> -m /output/2dgs/model/
+python pipeline/reconstruction/run_2dgs.py <sfm> /output/2dgs/
 ```
 
 #### PGSR
 
 ```bash
-cd src/pgsr/
-
-# PGSR expects sparse/ files directly (not in sparse/0/)
-cp -r <sfm> /output/pgsr/scene/
-mv /output/pgsr/scene/sparse/0/* /output/pgsr/scene/sparse/
-
-python train.py -s /output/pgsr/scene/ -m /output/pgsr/scene/ \
-    --max_abs_split_points 0 --opacity_cull_threshold 0.05
-python render.py -m /output/pgsr/scene/ --max_depth 10.0 --voxel_size 0.001
+python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
+    --max_abs_split_points 0 --opacity_cull_threshold 0.05 \
+    --max_depth 10.0 --voxel_size 0.001
 ```
 
 ### Output
@@ -218,6 +206,29 @@ python render.py -m /output/pgsr/scene/ --max_depth 10.0 --voxel_size 0.001
 ### Masks
 
 Optional foreground masks can be provided as binary PNG files in a `masks/` directory alongside `images/`. Mask filenames should match image stems (e.g., `image001.png` for `image001.jpg`). White pixels indicate foreground; black pixels indicate background.
+
+## Baselines
+
+### Meshroom
+
+Meshroom (AliceVision) is used as the open-source baseline. See [meshroom-setup.md](meshroom-setup.md) for installation instructions.
+
+Once installed and `MESHROOM_ROOT` is set, run the wrapper script to execute a batch reconstruction and log runtime:
+
+```bash
+python baseline/benchmark_meshroom.py /path/to/scene/images/ /output/meshroom/ \
+    --save_file /output/meshroom/graph.mg
+```
+
+The wrapper resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), runs the `photogrammetry` pipeline by default, and prints total runtime on completion. To invoke `meshroom_batch` directly instead:
+
+```bash
+python "$MESHROOM_ROOT/bin/meshroom_batch" \
+    -i <path-to-input-images> \
+    -o <path-to-output-folder> \
+    -p photogrammetry \
+    -s <path-to-save-file>
+```
 
 ## Citations
 
@@ -271,6 +282,15 @@ Optional foreground masks can be provided as binary PNG files in a `masks/` dire
     title={A Vote-and-Verify Strategy for Fast Spatial Verification in Image Retrieval},
     booktitle={Asian Conference on Computer Vision (ACCV)},
     year={2016},
+}
+
+@inproceedings{alicevision2021,
+  title={{A}liceVision {M}eshroom: An open-source {3D} reconstruction pipeline},
+  author={Carsten Griwodz and Simone Gasparini and Lilian Calvet and Pierre Gurdjos and Fabien Castan and Benoit Maujean and Gregoire De Lillo and Yann Lanthony},
+  booktitle={Proceedings of the 12th ACM Multimedia Systems Conference - {MMSys '21}},
+  doi = {10.1145/3458305.3478443},
+  publisher = {ACM Press},
+  year = {2021}
 }
 ```
 

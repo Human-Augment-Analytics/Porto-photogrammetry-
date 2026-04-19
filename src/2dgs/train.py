@@ -167,7 +167,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
-                torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+                checkpoint_path = os.path.join(scene.model_path, f"chkpnt{iteration}.pth")
+                torch.save((gaussians.capture(), iteration), checkpoint_path)
 
         with torch.no_grad():        
             if network_gui.conn == None:

@@ -12,6 +12,7 @@ import glob
 import os
 import copy
 import shutil
+import time
 import torch
 import torch.nn.functional as F
 
@@ -66,7 +67,7 @@ def parse_args():
         "--fine_tracking", action="store_true", default=True, help="Use fine tracking (slower but more accurate)"
     )
     parser.add_argument(
-        "--conf_thres_value", type=float, default=5.0, help="Confidence threshold value for depth filtering (wo BA)"
+        "--conf_thres_value", type=float, default=1.0, help="Confidence threshold value for depth filtering (wo BA)"
     )
     return parser.parse_args()
 
@@ -115,10 +116,14 @@ def run_VGGT(model, images, masks, dtype, resolution=518):
 
 
 def main(args):
-    logger.info(f"Input:     {args.input_dir}")
-    logger.info(f"Output:    {args.output_dir}")
-    logger.info(f"Use BA:    {args.use_ba}")
-    logger.info(f"Use masks: {args.use_masks}")
+    logger.info("=" * 60)
+    logger.info("VGGT to COLMAP Pipeline")
+    logger.info(f"  Input:     {args.input_dir}")
+    logger.info(f"  Output:    {args.output_dir}")
+    logger.info(f"  Use BA:    {args.use_ba}")
+    logger.info(f"  Use masks: {args.use_masks}")
+    logger.info("=" * 60)
+    t_start = time.time()
 
     # Set seed for reproducibility
     np.random.seed(args.seed)
@@ -136,12 +141,14 @@ def main(args):
     logger.info(f"Using dtype: {dtype}")
 
     # Run VGGT for camera and depth estimation
+    t0 = time.time()
     model = VGGT()
     _URL = "https://huggingface.co/facebook/VGGT-1B/resolve/main/model.pt"
     model.load_state_dict(torch.hub.load_state_dict_from_url(_URL))
     model.eval()
     model = model.to(device)
-    logger.info("Model loaded")
+    load_time = time.time() - t0
+    logger.info(f"Model loaded in {load_time:.1f}s")
 
     # Get image paths and preprocess them
     image_dir = os.path.join(args.input_dir, "images")
@@ -177,10 +184,14 @@ def main(args):
 
     # Run VGGT to estimate camera and depth
     # Run with 518x518 images
+    t0 = time.time()
     extrinsic, intrinsic, depth_map, depth_conf = run_VGGT(model, images, masks, dtype, vggt_fixed_resolution)
     points_3d = unproject_depth_map_to_point_map(depth_map, extrinsic, intrinsic)
+    vggt_time = time.time() - t0
+    logger.info(f"VGGT inference completed in {vggt_time:.1f}s")
 
     if args.use_ba:
+        t0 = time.time()
         image_size = np.array(images.shape[-2:])
         scale = img_load_resolution / vggt_fixed_resolution
         shared_camera = args.shared_camera
@@ -232,6 +243,8 @@ def main(args):
         pycolmap.bundle_adjustment(reconstruction, ba_options)
 
         reconstruction_resolution = img_load_resolution
+        ba_time = time.time() - t0
+        logger.info(f"Tracking + bundle adjustment completed in {ba_time:.1f}s")
     else:
         conf_thres_value = args.conf_thres_value
         max_points_for_colmap = 100000  # randomly sample 3D points
@@ -280,7 +293,7 @@ def main(args):
         shift_point2d_to_original_res=True,
         shared_camera=shared_camera,
     )
-    logger.info(f"Saving reconstruction to {args.output_dir}/sparse/0/")
+    logger.info("Saving reconstruction to %s", os.path.join(args.output_dir, "sparse", "0"))
     sparse_reconstruction_dir = os.path.join(args.output_dir, "sparse", "0")
     os.makedirs(sparse_reconstruction_dir, exist_ok=True)
     reconstruction.write(sparse_reconstruction_dir)
@@ -300,22 +313,29 @@ def main(args):
         if not os.path.exists(img_dst_path):
             shutil.copy2(img_src_path, img_dst_path)
         
-        if args.use_masks:
-            mask_src_path = os.path.join(mask_dir, f"{img_stem}.png")
-            if os.path.exists(mask_src_path):
-                mask_dst_path = os.path.join(masks_out_dir, f"{img_stem}.png")
-                if not os.path.exists(mask_dst_path):
-                    shutil.copy2(mask_src_path, mask_dst_path)
-                n_masks += 1
+        mask_src_path = os.path.join(mask_dir, f"{img_stem}.png")
+        if os.path.exists(mask_src_path):
+            mask_dst_path = os.path.join(masks_out_dir, f"{img_stem}.png")
+            if not os.path.exists(mask_dst_path):
+                shutil.copy2(mask_src_path, mask_dst_path)
+            n_masks += 1
     
     logger.info(f"Copied {len(image_path_list)} images to {images_out_dir}")
     logger.info(f"Copied {n_masks} masks to {masks_out_dir}")
+
+    total_time = time.time() - t_start
+    logger.info("=" * 60)
+    logger.info("Pipeline complete")
+    logger.info(f"  Total time: {total_time:.1f}s")
+    logger.info(f"  Output:     {args.output_dir}")
+    logger.info("=" * 60)
 
     return True
 
 
 def rename_colmap_recons_and_rescale_camera(
-    reconstruction, image_paths, original_coords, img_size, shift_point2d_to_original_res=False, shared_camera=False
+    reconstruction, image_paths, original_coords, img_size, shift_point2d_to_original_res=False, shared_camera=False,
+    original_coords_img_size=1024,
 ):
     rescale_camera = True
 
@@ -341,8 +361,10 @@ def rename_colmap_recons_and_rescale_camera(
             pycamera.height = real_image_size[1]
 
         if shift_point2d_to_original_res:
-            # Also shift the point2D to original resolution
-            top_left = original_coords[pyimageid - 1, :2]
+            # original_coords was produced by the loader at original_coords_img_size;
+            # rescale top_left into the reconstruction's img_size units before shifting.
+            coord_scale = img_size / original_coords_img_size
+            top_left = original_coords[pyimageid - 1, :2] * coord_scale
 
             for point2D in pyimage.points2D:
                 point2D.xy = (point2D.xy - top_left) * resize_ratio
