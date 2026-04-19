@@ -28,9 +28,9 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 
 ### Requirements
 
-- Linux (tested on Ubuntu / WSL2)
+- Linux (tested on RHEL 9)
 - Python 3.10
-- CUDA-capable GPU (12 GB+ VRAM recommended)
+- CUDA-capable GPU (24 GB+ VRAM recommended)
 - CUDA 12.8
 
 ### Setup
@@ -296,7 +296,7 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
 
 ## Acknowledgements
 
-This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, and Bree Wang.
+This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, Bree Wang, and Riyam Zaman.
 
 ## Support
 
