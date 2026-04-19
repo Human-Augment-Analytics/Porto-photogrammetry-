@@ -69,7 +69,7 @@ def main():
     parser.add_argument("--sdf_trunc", type=float, default=-1.0, help="SDF truncation (auto if negative)")
     parser.add_argument("--num_cluster", type=int, default=50, help="Connected components to keep in mesh")
     parser.add_argument("--unbounded", action="store_true", help="Use unbounded mesh extraction (marching cubes)")
-    parser.add_argument("--mesh_res", type=int, default=1024, help="Resolution for unbounded mesh extraction")
+    parser.add_argument("--mesh_res", type=int, default=8192, help="Resolution for unbounded mesh extraction")
     parser.add_argument("--skip_mesh", action="store_true", help="Skip mesh extraction (render only)")
 
     args = parser.parse_args()
