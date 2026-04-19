@@ -37,7 +37,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Run the Meshroom batch photogrammetry pipeline.",
     )
-    parser.add_argument("input_images", type=Path, help="Directory of input images")
+    parser.add_argument("input_dir", type=Path, help="Directory of dataset")
     parser.add_argument("output_dir", type=Path, help="Meshroom output directory")
     parser.add_argument("--save_file", type=Path, default=None, help="Path to save the pipeline graph (.mg)")
     parser.add_argument(
@@ -48,8 +48,10 @@ def main():
     )
 
     args = parser.parse_args()
-    input_images = args.input_images.resolve()
+    input_dir = args.input_dir.resolve()
     output_dir = args.output_dir.resolve()
+    input_images = os.path.join(input_dir, "images")
+    mask_images = os.path.join(input_dir, "masks")
 
     meshroom_root = args.meshroom_root or os.environ.get("MESHROOM_ROOT")
     if not meshroom_root:
@@ -67,6 +69,7 @@ def main():
     logger.info("=" * 60)
     logger.info("Meshroom Baseline Pipeline")
     logger.info(f"  Input:    {input_images}")
+    logger.info(f"  Mask dir: {mask_images} (will be ignored if not present)")
     logger.info(f"  Output:   {output_dir}")
     logger.info(f"  Pipeline: {pipeline}")
     logger.info("=" * 60)
@@ -79,6 +82,8 @@ def main():
     ]
     if args.save_file is not None:
         cmd += ["-s", str(args.save_file.resolve())]
+    if os.path.exists(mask_images):
+        cmd += ["--paramOverrides", f"FeatureExtraction:masksFolder={mask_images}"]
 
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(meshroom_root), env.get("PYTHONPATH", "")]))

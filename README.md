@@ -216,7 +216,7 @@ Meshroom (AliceVision) is used as the open-source baseline. See [meshroom-setup.
 Once installed and `MESHROOM_ROOT` is set, run the wrapper script to execute a batch reconstruction and log runtime:
 
 ```bash
-python baseline/benchmark_meshroom.py /path/to/scene/images/ /output/meshroom/ \
+python baseline/benchmark_meshroom.py /path/to/scene/ /output/meshroom/ \
     --save_file /output/meshroom/graph.mg
 ```
 
@@ -228,6 +228,7 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
     -o <path-to-output-folder> \
     -p photogrammetry \
     -s <path-to-save-file>
+    --paramOverrides FeatureExtraction:masksFolder=<path-to-masks>
 ```
 
 ## Citations
