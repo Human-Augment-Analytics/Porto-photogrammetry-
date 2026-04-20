@@ -47,6 +47,34 @@ def main():
         help="Path to MESHROOM_ROOT (defaults to $MESHROOM_ROOT env var)",
     )
 
+    parser.add_argument("--describer_preset", default="normal", help="FeatureExtraction.describerPreset")
+    parser.add_argument("--describer_quality", default="normal", help="FeatureExtraction.describerQuality")
+    parser.add_argument("--describer_types", default="dspsift", help="FeatureExtraction.describerTypes")
+    parser.add_argument("--depthmap_downscale", type=int, default=2, help="DepthMap.downscale")
+    parser.add_argument("--max_input_points", type=int, default=50_000_000, help="Meshing.maxInputPoints")
+    parser.add_argument("--max_points", type=int, default=5_000_000, help="Meshing.maxPoints")
+    parser.add_argument(
+        "--estimate_space_min_observations",
+        type=int,
+        default=3,
+        help="Meshing.estimateSpaceMinObservations",
+    )
+    parser.add_argument("--smoothing_iterations", type=int, default=5, help="MeshFiltering.smoothingIterations")
+    parser.add_argument(
+        "--filter_large_triangles_factor",
+        type=float,
+        default=60.0,
+        help="MeshFiltering.filterLargeTrianglesFactor",
+    )
+    parser.add_argument(
+        "--filter_triangles_ratio",
+        type=float,
+        default=0.0,
+        help="MeshFiltering.filterTrianglesRatio",
+    )
+    parser.add_argument("--texture_side", type=int, default=8192, help="Texturing.textureSide")
+    parser.add_argument("--texturing_downscale", type=int, default=2, help="Texturing.downscale")
+
     args = parser.parse_args()
     input_dir = args.input_dir.resolve()
     output_dir = args.output_dir.resolve()
@@ -74,16 +102,32 @@ def main():
     logger.info(f"  Pipeline: {pipeline}")
     logger.info("=" * 60)
 
+    param_overrides = [
+        f"FeatureExtraction:describerPreset={args.describer_preset}",
+        f"FeatureExtraction:describerQuality={args.describer_quality}",
+        f"FeatureExtraction:describerTypes={args.describer_types}",
+        f"DepthMap:downscale={args.depthmap_downscale}",
+        f"Meshing:maxInputPoints={args.max_input_points}",
+        f"Meshing:maxPoints={args.max_points}",
+        f"Meshing:estimateSpaceMinObservations={args.estimate_space_min_observations}",
+        f"MeshFiltering:smoothingIterations={args.smoothing_iterations}",
+        f"MeshFiltering:filterLargeTrianglesFactor={args.filter_large_triangles_factor}",
+        f"MeshFiltering:filterTrianglesRatio={args.filter_triangles_ratio}",
+        f"Texturing:textureSide={args.texture_side}",
+        f"Texturing:downscale={args.texturing_downscale}",
+    ]
+    if os.path.exists(mask_images):
+        param_overrides.append(f"FeatureExtraction:masksFolder={mask_images}")
+
     cmd = [
         sys.executable, str(meshroom_batch),
         "-i", str(input_images),
         "-o", str(output_dir),
         "-p", pipeline,
+        "--paramOverrides", *param_overrides
     ]
     if args.save_file is not None:
         cmd += ["-s", str(args.save_file.resolve())]
-    if os.path.exists(mask_images):
-        cmd += ["--paramOverrides", f"FeatureExtraction:masksFolder={mask_images}"]
 
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(filter(None, [str(meshroom_root), env.get("PYTHONPATH", "")]))
