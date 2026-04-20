@@ -115,6 +115,7 @@ def main():
         f"MeshFiltering:filterTrianglesRatio={args.filter_triangles_ratio}",
         f"Texturing:textureSide={args.texture_side}",
         f"Texturing:downscale={args.texturing_downscale}",
+        f"Texturing:colorMapping.colorMappingFileType=png",
     ]
     if os.path.exists(mask_images):
         param_overrides.append(f"FeatureExtraction:masksFolder={mask_images}")
