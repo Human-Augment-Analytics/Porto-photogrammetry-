@@ -60,7 +60,7 @@ def main():
     parser.add_argument("--regularization", type=str, default="dn_consistency",
                         choices=["sdf", "density", "dn_consistency"],
                         help="Coarse SuGaR regularization type")
-    parser.add_argument("--surface_level", type=float, default=0.3, help="Isosurface level for mesh extraction")
+    parser.add_argument("--surface_level", type=float, default=0.1, help="Isosurface level for mesh extraction")
     parser.add_argument("--n_vertices", type=int, default=1_000_000, help="Target vertex count")
     parser.add_argument("--gaussians_per_triangle", type=int, default=1, help="Gaussians per mesh triangle")
     parser.add_argument("--refinement_iterations", type=int, default=15_000, help="Refinement training iterations")
