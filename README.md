@@ -264,6 +264,16 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
   year={2024}
 }
 
+@misc{gomez2026blobsspokeshighfidelitysurface,
+      title={From Blobs to Spokes: High-Fidelity Surface Reconstruction via Oriented Gaussians}, 
+      author={Diego Gomez and Antoine Guédon and Nissim Maruani and Bingchen Gong and Maks Ovsjanikov},
+      year={2026},
+      eprint={2604.07337},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2604.07337}, 
+}
+
 @inproceedings{schoenberger2016sfm,
     author={Sch\"{o}nberger, Johannes Lutz and Frahm, Jan-Michael},
     title={Structure-from-Motion Revisited},
