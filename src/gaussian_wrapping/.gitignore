@@ -223,3 +223,13 @@ deprecated/
 CLAUDE.md
 DESIGN.md
 TRAIN_CLEANING.md
+
+.vscode/
+output
+diff_rasterization/diff_rast.egg-info
+diff_rasterization/dist
+diff_rasterization_ms/diff_gaussian_rasterization_ms.egg-info
+diff_rasterization_ms/dist
+*.npy
+*.png
+*.mat
