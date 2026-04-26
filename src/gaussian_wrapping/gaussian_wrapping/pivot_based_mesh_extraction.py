@@ -55,7 +55,10 @@ def evaluation_validation(view, points, inside):
     if view.gt_mask is None:
         return inside
 
-    points_cam = points @ view.R + view.T
+    points_cam = transform_points_world_to_view(
+        points=points.view(1, -1, 3),
+        cameras=[view],
+    ).squeeze(0)
     pts2d = points_cam[:, :2] / points_cam[:, 2:]
     pts2d = torch.addcmul(
         pts2d.new_tensor(
@@ -67,7 +70,11 @@ def evaluation_validation(view, points, inside):
         pts2d.new_tensor([view.Fx * 2.0 / view.image_width, view.Fy * 2.0 / view.image_height]),
         pts2d,
     )
-    sampled_mask = torch.nn.functional.grid_sample(view.gt_mask[None].cuda(), pts2d[None, None], align_corners=True)
+    sampled_mask = torch.nn.functional.grid_sample(
+        view.gt_mask[None].to(device=points.device),
+        pts2d[None, None],
+        align_corners=True,
+    )
     return (sampled_mask.squeeze() > 0.5) & inside
 
 
@@ -178,7 +185,10 @@ def marching_tetrahedra_with_binary_search(
             if view.gt_mask is None:
                 return inside
 
-            points_cam = points @ view.R + view.T
+            points_cam = transform_points_world_to_view(
+                points=points.view(1, -1, 3),
+                cameras=[view],
+            ).squeeze(0)
             pts2d = points_cam[:, :2] / points_cam[:, 2:]
             pts2d = torch.addcmul(
                 pts2d.new_tensor(
@@ -190,7 +200,11 @@ def marching_tetrahedra_with_binary_search(
                 pts2d.new_tensor([view.Fx * 2.0 / view.image_width, view.Fy * 2.0 / view.image_height]),
                 pts2d,
             )
-            sampled_mask = torch.nn.functional.grid_sample(view.gt_mask[None].cuda(), pts2d[None, None], align_corners=True)
+            sampled_mask = torch.nn.functional.grid_sample(
+                view.gt_mask[None].to(device=points.device),
+                pts2d[None, None],
+                align_corners=True,
+            )
             return (sampled_mask.squeeze() > 0.5) & inside
         
         @torch.no_grad()

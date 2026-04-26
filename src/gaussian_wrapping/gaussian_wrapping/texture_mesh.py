@@ -125,6 +125,10 @@ def main(
         mesh_rgb = rendered_image['rgb'].squeeze(0).permute(2, 0, 1)
         
         gt_image = images[viewpoint_idx].to(device)
+        if cameras[viewpoint_idx].gt_mask is not None:
+            foreground_mask = cameras[viewpoint_idx].gt_mask.to(device)
+            gt_image = gt_image * foreground_mask + background[:, None, None] * (1.0 - foreground_mask)
+
         Ll1 = l1_loss(mesh_rgb, gt_image)
         ssim_value = fused_ssim(mesh_rgb.unsqueeze(0), gt_image.unsqueeze(0))
         loss = ((1.0 - args.lambda_dssim) * Ll1 + args.lambda_dssim * (1.0 - ssim_value))

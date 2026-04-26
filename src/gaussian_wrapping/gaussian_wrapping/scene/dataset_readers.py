@@ -11,7 +11,7 @@
 
 import os
 import sys
-from PIL import Image
+from PIL import Image, ImageChops
 from typing import NamedTuple
 from scene.colmap_loader import read_extrinsics_text, read_intrinsics_text, qvec2rotmat, \
     read_extrinsics_binary, read_intrinsics_binary, read_points3D_binary, read_points3D_text
@@ -22,6 +22,43 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+
+
+def loadForegroundMask(source_path, cam_image, image_name):
+    masks_dir = os.path.join(source_path, "masks")
+    if not os.path.isdir(masks_dir):
+        return None
+
+    mask_path = os.path.join(masks_dir, f"{image_name}.png")
+    if not os.path.isfile(mask_path):
+        raise FileNotFoundError(
+            f"Missing foreground mask for image '{image_name}' at {mask_path}"
+        )
+
+    with Image.open(mask_path) as mask_handle:
+        mask_image = mask_handle.convert("L")
+
+    if mask_image.size != cam_image.size:
+        raise ValueError(
+            "Foreground mask size mismatch for image "
+            f"'{image_name}': expected {cam_image.size}, got {mask_image.size} "
+            f"from {mask_path}"
+        )
+
+    return mask_image
+
+
+def attachMaskAlpha(image, alpha_mask):
+    if alpha_mask is None:
+        return image
+
+    image_rgba = image.convert("RGBA")
+    if image.mode == "RGBA":
+        combined_alpha = ImageChops.multiply(image_rgba.getchannel("A"), alpha_mask)
+        image_rgba.putalpha(combined_alpha)
+    else:
+        image_rgba.putalpha(alpha_mask)
+    return image_rgba
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -65,7 +102,7 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, source_path):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -96,7 +133,10 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
 
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
-        image = Image.open(image_path)
+        with Image.open(image_path) as image_handle:
+            image = image_handle.copy()
+        foreground_mask = loadForegroundMask(source_path, image, image_name)
+        image = attachMaskAlpha(image, foreground_mask)
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height)
@@ -146,7 +186,12 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
                 cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
             reading_dir = "images" if images == None else images
-            cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+            cam_infos_unsorted = readColmapCameras(
+                cam_extrinsics=cam_extrinsics,
+                cam_intrinsics=cam_intrinsics,
+                images_folder=os.path.join(path, reading_dir),
+                source_path=path,
+            )
             cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
             if eval:

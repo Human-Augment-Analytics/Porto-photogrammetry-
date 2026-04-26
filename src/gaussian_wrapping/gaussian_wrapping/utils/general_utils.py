@@ -53,8 +53,11 @@ def gaussian_cdf(
     else:
         return result
 
-def PILtoTorch(pil_image, resolution):
-    resized_image_PIL = pil_image.resize(resolution)
+def PILtoTorch(pil_image, resolution, resample=None):
+    if resample is None:
+        resized_image_PIL = pil_image.resize(resolution)
+    else:
+        resized_image_PIL = pil_image.resize(resolution, resample=resample)
     resized_image = torch.from_numpy(np.array(resized_image_PIL)) / 255.0
     if len(resized_image.shape) == 3:
         return resized_image.permute(2, 0, 1)

@@ -12,7 +12,11 @@ sys.path.append(os.path.join(SUBMODULES_DIR, 'Depth-Anything-V2'))
 
 import torch
 from random import randint
-from utils.loss_utils import l1_loss, L1_loss_appearance, get_img_grad_weight
+from utils.loss_utils import (
+    l1_loss,
+    L1_loss_appearance,
+    get_img_grad_weight,
+)
 from fused_ssim import fused_ssim
 
 from gaussian_renderer import network_gui
@@ -115,6 +119,11 @@ def training(
     
     bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
+
+    background_expanded = background.unsqueeze(1).unsqueeze(2)
+    viewpoint_cam = scene.getTrainCameras()[0]
+    sample_image = viewpoint_cam.original_image.cuda()
+    background_expanded = background_expanded.expand_as(sample_image)
 
     # Initialize culling stats
     mask_blur = torch.zeros(gaussians._xyz.shape[0], device='cuda')
@@ -264,11 +273,17 @@ def training(
         )
 
         # ---Compute losses---
-        image, viewspace_point_tensor, visibility_filter, radii = (
+        image, viewspace_point_tensor, visibility_filter, radii, alpha = (
             render_pkg["render"], render_pkg["viewspace_points"], 
-            render_pkg["visibility_filter"], render_pkg["radii"]
+            render_pkg["visibility_filter"], render_pkg["radii"],
+            render_pkg["rend_alpha"]
         )
         gt_image = viewpoint_cam.original_image.cuda()
+        if viewpoint_cam.gt_mask is not None:
+            gt_mask = viewpoint_cam.gt_mask.to(gt_image.device)
+            gt_image = torch.where(gt_mask == 0, background_expanded, gt_image)
+            image = torch.cat([image, alpha], dim=0)
+            gt_image = torch.cat([gt_image, gt_mask], dim=0)
 
         # Rendering loss
         if args.decoupled_appearance or args.exposure_compensation:

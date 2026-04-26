@@ -107,6 +107,7 @@ def render_ours(
             "visibility_filter" : radii > 0,
             "radii": radii,
             "normal":rendered_normal,
+            "rend_alpha": rendered_alpha,
             }
 
 
