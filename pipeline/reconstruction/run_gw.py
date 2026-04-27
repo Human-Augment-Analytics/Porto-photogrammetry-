@@ -74,6 +74,14 @@ def get_mesh_path(model_path, n_pivots, postprocess):
     return os.path.join(str(model_path), mesh_name)
 
 
+def get_textured_mesh_path(model_path, mesh_path, texture_n_iter):
+    base = os.path.basename(mesh_path)
+    mesh_name = base.split(".")[0]
+    mesh_extension = base.split(".")[1]
+    i_iter = texture_n_iter - 1
+    return os.path.join(str(model_path), f"{mesh_name}_texture_refined_{i_iter}.{mesh_extension}")
+
+
 def build_train_cmd(args, model_path, scene_dir, passthrough_args):
     return [
         sys.executable, str(TRAIN_SCRIPT),
@@ -207,13 +215,15 @@ def main():
     output_dir = args.output_dir.resolve()
     extract_iteration = args.extract_iteration or args.iterations
     mesh_path = get_mesh_path(output_dir, args.n_pivots, args.postprocess)
+    textured_mesh_path = get_textured_mesh_path(output_dir, mesh_path, args.texture_n_iter)
 
     logger.info("=" * 60)
     logger.info("Gaussian Wrapping Reconstruction Pipeline")
     logger.info(f"  Scene:  {scene_dir}")
     logger.info(f"  Output: {output_dir}")
-    logger.info(f"  Extract iteration: {extract_iteration}")
-    logger.info(f"  Mesh path:         {mesh_path}")
+    logger.info(f"  Extract iteration:  {extract_iteration}")
+    logger.info(f"  Extracted mesh:     {mesh_path}")
+    logger.info(f"  Textured mesh:      {textured_mesh_path}")
     if passthrough_args:
         logger.info(f"  Forwarding extra train.py args: {' '.join(passthrough_args)}")
     logger.info("=" * 60)
@@ -247,7 +257,8 @@ def main():
     logger.info(f"  Texture time:  {texture_time:.1f}s")
     logger.info(f"  Total:         {total_time:.1f}s")
     logger.info(f"  Output:        {output_dir}")
-    logger.info(f"  Mesh:          {mesh_path}")
+    logger.info(f"  Extracted mesh: {mesh_path}")
+    logger.info(f"  Textured mesh:  {textured_mesh_path}")
     logger.info("=" * 60)
 
 

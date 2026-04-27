@@ -64,10 +64,27 @@ python -m pip install \
     src/pytorch3d \
     src/2dgs/submodules/diff-surfel-rasterization \
     src/pgsr/submodules/diff-plane-rasterization \
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
+    src/gaussian_wrapping/submodules/fused-ssim \
+    src/gaussian_wrapping/submodules/warp-patch-ncc
     --no-build-isolation
 
 # Install VGGT as editable package
 python -m pip install -e src/vggt --no-build-isolation
+
+# Build and install Tetra-NeRF triangulation module
+export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH
+conda install -y cmake
+conda install -y conda-forge::gmp
+conda install -y conda-forge::cgal
+cd src/gaussian_wrapping/submodules/tetra_triangulation
+cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCGAL_DIR=$CONDA_PREFIX/lib/cmake/CGAL \
+        -DTorch_DIR=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'share/cmake/Torch'))") \
+        -DCMAKE_IGNORE_PATH="$ALICEVISION_ROOT;$ALICEVISION_ROOT/bin;$ALICEVISION_ROOT/lib"
+make
+pip install -e .
 ```
 
 VGGT model weights (~4 GB) are downloaded automatically from `facebook/VGGT-1B` on HuggingFace on first run.
