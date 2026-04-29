@@ -23,3 +23,5 @@ plyfile
 pymcubes
 pycolmap==3.10.0
 rich
+scikit-image
+dacite

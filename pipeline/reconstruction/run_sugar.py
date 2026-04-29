@@ -68,7 +68,7 @@ def main():
     parser.add_argument("--high_poly", action="store_true", help="1M vertices, 1 gaussian/triangle")
     parser.add_argument("--refinement_time", type=str, default=None, choices=["short", "medium", "long"],
                         help="Preset refinement duration (2k/7k/15k iterations)")
-    parser.add_argument("--square_size", type=int, default=8,
+    parser.add_argument("--square_size", type=int, default=4,
                         help="UV texture square size (larger → finer baked texture)")
     parser.add_argument("--postprocess_mesh", action="store_true",
                         help="Remove low-density border triangles (risky; can help single-sided objects)")

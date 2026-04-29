@@ -30,7 +30,7 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 
 - Linux (tested on RHEL 9)
 - Python 3.10
-- CUDA-capable GPU (24 GB+ VRAM recommended)
+- CUDA-capable GPU (80 GB+ VRAM recommended)
 - CUDA 12.8
 
 ### Setup
@@ -50,7 +50,7 @@ git submodule update --init --recursive
 python -m pip install -r requirements.txt
 
 # Install PyTorch with CUDA (adjust URL for your CUDA version)
-python -m pip install torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 \
+python -m pip install torch==2.9.1 torchvision==0.24.1 \
     --index-url https://download.pytorch.org/whl/cu130
 
 # Install nvdiffrast (required by SuGaR)
@@ -64,10 +64,10 @@ python -m pip install \
     src/pytorch3d \
     src/2dgs/submodules/diff-surfel-rasterization \
     src/pgsr/submodules/diff-plane-rasterization \
-    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
     src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
     src/gaussian_wrapping/submodules/fused-ssim \
-    src/gaussian_wrapping/submodules/warp-patch-ncc
+    src/gaussian_wrapping/submodules/warp-patch-ncc \
     --no-build-isolation
 
 # Install VGGT as editable package
@@ -168,7 +168,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 # VGGT (no BA)
 python pipeline/sfm/run_vggt_to_colmap.py \
     --input_dir /path/to/scene/ \
-    --output_dir /output/vggt_mask/ \
+    --output_dir /output/vggt/ \
     --conf_thres_value 1.0
 
 # Classical COLMAP
