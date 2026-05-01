@@ -9,7 +9,8 @@ Output: a textured mesh (.ply / .obj) and supporting artifacts under <output_dir
 Usage:
     python pipeline/reconstruction/run_gw.py <scene_dir> <output_dir> \
         [--iterations 30000] [--sh_degree 3] [--max_gaussians 6000000] \
-        [--n_pivots 2] [--n_binary_steps 10] [--isosurface_value 0.0] \
+        [--n_pivots 2] [--std_factor 3.0] [--n_binary_steps 10] [--isosurface_value 0.0] \
+        [--use_searched_pivots] [--use_smallest_axis_as_normal] \
         [--no-postprocess] [--no-filter_large_edges] \
         [--texture_n_iter 1000] [--texture_lr 0.0025]
 """
@@ -47,6 +48,7 @@ DEFAULT_TRAIN_PGSR_APPEARANCE_LR = 0.001
 DEFAULT_MAX_GAUSSIANS = 6_000_000
 
 DEFAULT_EXTRACT_N_PIVOTS = 2
+DEFAULT_EXTRACT_STD_FACTOR = 3.0
 DEFAULT_EXTRACT_N_BINARY_STEPS = 10
 DEFAULT_EXTRACT_ISOSURFACE_VALUE = 0.0
 
@@ -124,12 +126,17 @@ def build_extract_cmd(args, model_path, scene_dir, extract_iteration):
         "-s", str(scene_dir),
         "-m", str(model_path),
         "--n_pivots", str(args.n_pivots),
+        "--std_factor", str(args.std_factor),
         "--n_binary_steps", str(args.n_binary_steps),
         "--isosurface_value", str(args.isosurface_value),
         "--iteration", str(extract_iteration),
         "--use_valid_mask",
         "--data_device", "cpu",
     ]
+    if args.use_searched_pivots:
+        cmd.append("--use_searched_pivots")
+    if args.use_smallest_axis_as_normal:
+        cmd.append("--use_smallest_axis_as_normal")
     if args.postprocess:
         cmd.append("--postprocess")
     if args.filter_large_edges:
@@ -197,6 +204,12 @@ def main():
     parser.add_argument("--extract_iteration", type=int, default=None,
                         help="Checkpoint iteration to load for extraction and texture refinement. Defaults to --iterations.")
     parser.add_argument("--n_pivots", type=int, default=DEFAULT_EXTRACT_N_PIVOTS, help="Number of pivots for mesh extraction")
+    parser.add_argument("--std_factor", type=float, default=DEFAULT_EXTRACT_STD_FACTOR,
+                        help="Pivot offset scale relative to Gaussian extent during mesh extraction")
+    parser.add_argument("--use_searched_pivots", action=BooleanOptionalAction, default=False,
+                        help="Refine extraction pivots by searching along the normal direction")
+    parser.add_argument("--use_smallest_axis_as_normal", action=BooleanOptionalAction, default=False,
+                        help="Use the Gaussian's smallest axis as the extraction normal instead of learned normals")
     parser.add_argument("--n_binary_steps", type=int, default=DEFAULT_EXTRACT_N_BINARY_STEPS, help="Binary search refinement steps")
     parser.add_argument("--isosurface_value", type=float, default=DEFAULT_EXTRACT_ISOSURFACE_VALUE, help="Isosurface value")
     parser.add_argument("--postprocess", action=BooleanOptionalAction, default=True,
