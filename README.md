@@ -140,6 +140,18 @@ augenblick/
 └── CLAUDE.md                  # Detailed codebase documentation
 ```
 
+## Input Requirements
+
+- **Format**: JPG or PNG
+- **Resolution**: 1024x768 minimum, higher recommended
+- **Overlap**: 60-80% between adjacent views
+- **Lighting**: Consistent across all views
+- **Focus**: Sharp, minimal motion blur
+
+### Masks
+
+Optional foreground masks can be provided as binary PNG files in a `masks/` directory alongside `images/`. Mask filenames should match image stems (e.g., `image001.png` for `image001.jpg`). White pixels indicate foreground; black pixels indicate background.
+
 ## Usage
 
 All reconstruction backends consume a common COLMAP-format scene directory:
@@ -237,18 +249,6 @@ details.
 | 2DGS | Triangle mesh (`.ply`) | `<model>/train/ours_<iter>/fuse_post.ply` |
 | PGSR | Triangle mesh (`.ply`) | `<model>/mesh/tsdf_fusion_post.ply` |
 | Gaussian Wrapping | Extracted mesh, post-processed mesh, textured mesh (`.ply`) | `<output>/mesh_ours_2pivots{,_post,_post_texture_refined_<iter>}.ply` |
-
-## Input Requirements
-
-- **Format**: JPG or PNG
-- **Resolution**: 1024x768 minimum, higher recommended
-- **Overlap**: 60-80% between adjacent views
-- **Lighting**: Consistent across all views
-- **Focus**: Sharp, minimal motion blur
-
-### Masks
-
-Optional foreground masks can be provided as binary PNG files in a `masks/` directory alongside `images/`. Mask filenames should match image stems (e.g., `image001.png` for `image001.jpg`). White pixels indicate foreground; black pixels indicate background.
 
 ## Baselines
 
