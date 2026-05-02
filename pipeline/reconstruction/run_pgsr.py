@@ -109,7 +109,7 @@ def main():
 
     # Rendering / mesh extraction parameters
     parser.add_argument("--max_depth", type=float, default=10.0, help="Max depth for TSDF integration")
-    parser.add_argument("--voxel_size", type=float, default=0.0005, help="TSDF voxel size")
+    parser.add_argument("--voxel_size", type=float, default=0.001, help="TSDF voxel size")
     parser.add_argument("--num_cluster", type=int, default=1, help="Connected components to keep in mesh")
     parser.add_argument("--use_depth_filter", action="store_true",
                         help="Drop grazing-angle depths before TSDF fusion")
