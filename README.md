@@ -275,6 +275,7 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
 ```
 
 ## Runtime Comparison
+### End-to-end
 The following table compares the total runtime of each method on a sample scene with 138 high-resolution images (6240x4160) and masks, run on an NVIDIA A100 PCIe 40 GB GPU.
 
 | Method                        | Total Runtime     |
@@ -284,6 +285,15 @@ The following table compares the total runtime of each method on a sample scene 
 | COLMAP + PGSR                 | ~70 mins          |
 | COLMAP + Gaussian Wrapping    | ~65 mins          |
 | Meshroom                      | ~60 mins          |
+
+### Structure-from-Motion
+The following table compares the runtime of the for each SfM method on the same scene as above,
+run on an NVIDIA B200 80 GB GPU.
+| Method            | Runtime       |
+|-------------------|---------------|
+| COLMAP            | ~10 mins      |
+| VGGT              | ~3 mins       |
+| VGGT + BA         | ~15 mins      |
 
 ## Citations
 
