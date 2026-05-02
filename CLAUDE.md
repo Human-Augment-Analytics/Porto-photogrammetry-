@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Augenblick** is a photogrammetry pipeline for producing 3D meshes from multi-view images. It replaces classical COLMAP feature-matching with a feed-forward transformer (VGGT) and feeds its outputs into several neural surface-reconstruction backends. The project supports two SfM paths (VGGT, classical COLMAP) and three Gaussian-splatting-based reconstruction backends (SuGaR, PGSR, 2DGS), all of which consume COLMAP-format sparse reconstructions.
+**Augenblick** is a photogrammetry pipeline for producing 3D meshes from multi-view images. It replaces classical COLMAP feature-matching with a feed-forward transformer (VGGT) and feeds its outputs into several neural surface-reconstruction backends. The project supports two SfM paths (VGGT, classical COLMAP) and four Gaussian-splatting-based reconstruction backends (SuGaR, PGSR, 2DGS, Gaussian Wrapping), all of which consume COLMAP-format sparse reconstructions.
 
 | Pipeline stage | Options |
 |----------------|---------|
 | Data preparation | `pipeline/preparation/prepare_uf_dataset.py` |
 | SfM | VGGT (`pipeline/sfm/run_vggt_to_colmap.py`) or COLMAP (`pipeline/sfm/run_colmap.sh`) |
-| Reconstruction | SuGaR (`pipeline/reconstruction/run_sugar.py`), 2DGS (`pipeline/reconstruction/run_2dgs.py`), PGSR (`pipeline/reconstruction/run_pgsr.py`) |
+| Reconstruction | SuGaR (`pipeline/reconstruction/run_sugar.py`), 2DGS (`pipeline/reconstruction/run_2dgs.py`), PGSR (`pipeline/reconstruction/run_pgsr.py`), Gaussian Wrapping (`pipeline/reconstruction/run_gw.py`) |
 | Baseline | Meshroom (`baseline/benchmark_meshroom.py`) |
 
 ## Environment Setup
@@ -104,9 +104,18 @@ python pipeline/reconstruction/run_2dgs.py <scene_dir> <output_dir> \
 python pipeline/reconstruction/run_pgsr.py <scene_dir> <output_dir> \
     [--iterations 30000] [--max_depth 10.0] [--voxel_size 0.001] \
     [--max_abs_split_points 0] [--opacity_cull_threshold 0.05]
+
+# Gaussian Wrapping: train (--rasterizer ours) → pivot mesh extraction → texture refinement
+python pipeline/reconstruction/run_gw.py <scene_dir> <output_dir> \
+    [--iterations 30000] [--sh_degree 3] [--max_gaussians 6000000] \
+    [--n_pivots 2] [--std_factor 3.0] [--n_binary_steps 10] [--isosurface_value 0.0] \
+    [--use_searched_pivots] [--use_smallest_axis_as_normal] \
+    [--no-postprocess] [--no-filter_large_edges] \
+    [--texture_n_iter 1000] [--texture_lr 0.0025] \
+    [-r 2]                       # image downsample (used for metrics)
 ```
 
-Each script runs the underlying `src/` training and rendering scripts via `subprocess.run()` with `cwd` set to the backend's source directory. PGSR's `run_pgsr.py` handles the sparse directory flattening automatically (PGSR expects `sparse/` not `sparse/0/`).
+Each script runs the underlying `src/` training and rendering scripts via `subprocess.run()`; SuGaR / 2DGS / PGSR set `cwd` to the backend's source directory. PGSR's `run_pgsr.py` handles the sparse directory flattening automatically (PGSR expects `sparse/` not `sparse/0/`). `run_gw.py` is the exception: it invokes `train.py`, `pivot_based_mesh_extraction.py`, and `texture_mesh.py` (all under `src/gaussian_wrapping/`) by absolute path without setting `cwd`; module imports like `from scene.gaussian_model import ...` resolve because Python prepends the script's directory to `sys.path`. Unrecognised CLI flags on `run_gw.py` are forwarded only to the training step (via `parse_known_args()`).
 
 ---
 
@@ -370,6 +379,87 @@ python render.py -m <model_path> \
 
 ---
 
+## src/gaussian_wrapping/ -- Gaussian Wrapping ("Blobs to Spokes")
+
+Reconstructs watertight, textured surface meshes by interpreting 3D Gaussians as stochastic oriented surface elements (Gomez et al., 2026, arXiv:2604.07337). Multiple rasterizer backends (`ours` median-depth, `radegs`, `sof`) and SDF modes (`ours`, `exact_computation`) are available; the canonical pipeline uses `--rasterizer ours` + `--sdf_mode ours`.
+
+> **Note on layout:** Internal modules import as `from scene.gaussian_model import ...`, `from gaussian_renderer.ours import ...`, etc. — i.e. `src/gaussian_wrapping/` is the package root. `pipeline/reconstruction/run_gw.py` calls each script by absolute path; the script's directory is prepended to `sys.path` automatically by Python so the imports resolve. (Unlike the other reconstruction wrappers, `run_gw.py` does **not** set `cwd` on its `subprocess.run` calls.)
+
+### Three-stage pipeline
+
+The wrapper `pipeline/reconstruction/run_gw.py` orchestrates:
+
+1. **Training** (`train.py`): hardcoded `--rasterizer ours`, `--exposure_compensation`, `--data_device cpu`, `--N_max_gaussians 6000000`. Multi-view NCC + geometric consistency losses, normal-field densification (iters ~22k–26k), depth-normal regularization (`mask_depth_normal=True` is auto-set when `--rasterizer ours`).
+2. **Pivot-based mesh extraction** (`pivot_based_mesh_extraction.py`): hardcoded `--sdf_mode ours`, `--dtype int32`, `--use_valid_mask`, `--isosurface_value 0.0`, `--n_binary_steps 10`. Marching-tetrahedra over Delaunay tetrahedralisation of pivot points; binary search refinement; optional `--postprocess` (default on, strips floaters) and `--filter_large_edges` (default on).
+3. **Texture refinement** (`texture_mesh.py`): bakes per-vertex colors from rendered Gaussian views via L1 + fused-SSIM, default 1000 iters, `sh_degree_for_texturing=0`. Output: `{mesh_stem}_texture_refined_{iter-1}.ply`.
+
+Mesh filename convention: `mesh_{sdf_mode}_{n_pivots}pivots[_post].ply` written under `<output_dir>` (the model_path). The texture stage appends `_texture_refined_{iter}` to the stem. The driver computes these paths via `get_mesh_path()` / `get_textured_mesh_path()`.
+
+### Key components
+
+| Path | Role |
+|------|------|
+| `train.py` | Full optimisation loop. CLI in `__main__` (lines 729-889) selects rasterizer, loads YAML configs for multiview/MILo/depth-order/normal-field, and forwards into `training()`. |
+| `pivot_based_mesh_extraction.py` | `marching_tetrahedra_with_binary_search()` is the entry point. SDF mode dispatches to `integrate_ours` (default) or SOF transmittance. `compute_valid_mask` reprojects pivots through every camera and ANDs `gt_mask` where present. |
+| `texture_mesh.py` | Loads Gaussians + mesh, optimises `_verts_colors` against rendered views. Mesh rasterisation via `ScalableMeshRenderer` / `MeshRenderer` (nvdiffrast). |
+| `primal_adaptive_meshing_extraction.py` | Alternative extraction: samples candidate points from an existing mesh, refines onto the occupancy isosurface via gradient descent, reconstructs via Delaunay. Supports `--bounding_box_method {scene,ground_truth,blender}`. |
+| `scripts/train_and_extract_gw_ours.py` | Upstream end-to-end driver with hardcoded `train_and_extract_gw_ours.py` flags. The repo's `pipeline/reconstruction/run_gw.py` is a more configurable wrapper around the same three stages. |
+| `scripts/train_and_extract_gw_radegs.py` | Same flow with the RaDe-GS rasterizer (slower, used for qualitative MipNeRF360 results upstream). |
+| `scripts/benchmark_{tnt,mip360}_gw_{ours,radegs}.py` | Dataset-specific batch benchmark wrappers. |
+| `scene/gaussian_model.py` | `GaussianModel` with `learn_occupancy`, `n_pivots_per_gaussian`, 3D Mip filter (`compute_3D_filter`), exposure compensation, RaDe-GS densification (`densify_and_prune_radegs`). |
+| `scene/__init__.py` | `Scene` auto-detects COLMAP (`sparse/`) vs Blender (`transforms_train.json`); loads checkpoints or calls `create_from_pcd`. |
+| `scene/mesh.py` | `Meshes`, `MeshRasterizer`, `MeshRenderer`, `ScalableMeshRenderer`, QEM utilities, `return_delaunay_tets(method="tetranerf")`. |
+| `gaussian_renderer/ours.py` | `render_ours`, `integrate_ours`, `sample_depth_with_ours`. Backed by `diff_gaussian_rasterization_gw`. |
+| `gaussian_renderer/radegs.py` | `render_radegs`, `integrate_radegs`. Top-level import is guarded by `try/except ImportError`. |
+| `gaussian_renderer/sof.py` | `render_sof`, vacancy/transmittance evaluators. Used only by `--sdf_mode exact_computation` or `--milo`. |
+| `extraction/pivots.py` | `get_intersecting_pivots_from_normals` (default), `get_pivots_by_scores`, `sample_random_pivots`, `get_searched_pivots`. |
+| `extraction/mesh.py` | `extract_mesh`, `compute_isosurface_value_from_depth`. |
+| `regularization/sdf/learnable.py` | `refine_intersections_with_binary_search`, SDF↔occupancy conversions. |
+| `regularization/sdf/depth_fusion.py` | `AdaptiveTSDF`, `evaluate_mesh_colors_all_vertices`, `frustum_cull_mesh`. |
+| `regularization/regularizer/multiview.py` | NCC patch-matching + geometric consistency across nearest views (`--multiview` defaults to True). |
+| `regularization/regularizer/mesh_in_the_loop.py` | MILo depth/normal/occupancy losses against a Delaunay mesh rebuilt every `reset_delaunay_every` iters. |
+| `regularization/regularizer/normal_field.py` | Normal-field initialisation, regularization, densification, non-maximal pruning. |
+| `regularization/regularizer/depth_order.py` | Depth-Anything-V2 supervision; off by default, enabled with `--depth_order`. |
+| `arguments/__init__.py` | `ModelParams`, `PipelineParams`, `OptimizationParams`. `get_combined_args` merges CLI with the `cfg_args` file from `model_path`. |
+| `configs/` | YAML presets for `mesh_in_the_loop/`, `multiview/`, `normal_field/`, `depth_order/`, `mesh/`. |
+
+### CUDA/C++ submodules (under `submodules/`)
+
+The repo-level `python -m pip install ... --no-build-isolation` step in [README.md](README.md) installs the four wheels GW needs alongside the other backends. The CGAL-based `tetra_triangulation` is built separately (via `cmake` + `make` + `pip install -e .`) because it requires `CPATH` to be set to the CUDA include directory.
+
+| Submodule | Purpose | When loaded |
+|-----------|---------|-------------|
+| `diff-gaussian-rasterization-gw` | Median-depth rasterizer for `render_ours` / `integrate_ours` | Always on the `ours` path |
+| `diff-gaussian-rasterization-ms` | Mini-Splatting2; provides fused-SSIM `_C` binding and `render_depth`/`render_simp` for normal-field densification | Always (top-level import in `utils/loss_utils.py`) |
+| `fused-ssim` | Fast SSIM for the photometric loss | Always |
+| `warp-patch-ncc` | NCC patch matching for the multiview regularizer | Always (`--multiview` defaults to True) |
+| `tetra_triangulation` | CGAL Delaunay tetrahedralisation (`return_delaunay_tets(method="tetranerf")`) | Pivot extraction stage |
+| `nvdiffrast` (vendored) | Mesh rasterisation backing `MeshRasterizer` | Texture refinement stage |
+| `Depth-Anything-V2` | Monocular depth prior | Only with `--depth_order` (off by default) |
+| `diff-gaussian-rasterization` (RaDe-GS) | RaDe-GS rasterizer | Only with `--rasterizer radegs`; top-level import is `try/except`-guarded |
+| `diff-gaussian-rasterization-sof` | SOF transmittance rasterizer | Only with `--sdf_mode exact_computation` or `--milo` |
+
+The repo currently installs `diff-gaussian-rasterization-gw`, `diff-gaussian-rasterization-ms`, `fused-ssim`, `warp-patch-ncc`, and `tetra_triangulation`. RaDe-GS, SOF, and Depth-Anything-V2 are not built in the canonical install (the `ours` path's imports are guarded so this is safe).
+
+### Output filenames under `<output_dir>`
+
+```
+<output_dir>/
+├── point_cloud/iteration_<N>/point_cloud.ply   # trained Gaussians
+├── cfg_args, time.txt, cameras.json, input.ply # scene metadata
+├── mesh_ours_2pivots.ply                       # raw pivot-based mesh
+├── mesh_ours_2pivots_post.ply                  # post-processed (floaters stripped)
+└── mesh_ours_2pivots_post_texture_refined_<iter-1>.ply  # final textured mesh
+```
+
+`<iter-1>` because `texture_mesh.py` writes the iteration index, not count (e.g. `texture_n_iter=1000` → file suffix `_999`).
+
+### Inclusion notes
+
+The driver path (`--rasterizer ours` + `--sdf_mode ours`) avoids RaDe-GS and SOF, which require additional CUDA kernels. Top-level imports of those backends in `gaussian_renderer/__init__.py` and `pivot_based_mesh_extraction.py` are wrapped in `try/except ImportError` or pushed inside `if args.rasterizer == "radegs":` branches, so the install can skip those wheels safely. See `gaussian-wrapping-inclusion.md` (repo root) for a full audit.
+
+---
+
 ## Common Scene Format
 
 All reconstruction backends (SuGaR, PGSR, 2DGS) consume the same COLMAP-format scene:
@@ -410,5 +500,7 @@ COLMAP scene (images/ + sparse/0/)
     │
     ├──► run_2dgs.py → 2DGS model → TSDF fusion → mesh (.ply)
     │
-    └──► run_pgsr.py → copy + flatten sparse/ → PGSR model → TSDF fusion → mesh (.ply)
+    ├──► run_pgsr.py → copy + flatten sparse/ → PGSR model → TSDF fusion → mesh (.ply)
+    │
+    └──► run_gw.py → GW (ours) train → pivot marching-tetrahedra extract → texture refine → textured mesh (.ply)
 ```

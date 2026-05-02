@@ -21,6 +21,7 @@ Modern photogrammetry pipelines are two-stage: an SfM method first estimates cam
 | SuGaR | Surface-regularised 3D Gaussians with Poisson mesh extraction and UV texturing |
 | 2DGS | Flat 2D Gaussian surfel disks with TSDF depth fusion |
 | PGSR | Planar-consistent Gaussians with multi-view geometric/photometric losses and TSDF meshing |
+| Gaussian Wrapping | Stochastic oriented Gaussians with pivot-based marching-tetrahedra extraction and texture refinement |
 
 All combinations are benchmarked on runtime and compared qualitatively against RealityScan (commercial) and Meshroom (open-source) baselines.
 
@@ -32,6 +33,8 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 - Python 3.10
 - CUDA-capable GPU (80 GB+ VRAM recommended)
 - CUDA 12.8
+
+**Note**: VGGT requires a GPU with at least 80 GB of VRAM for large scenes. COLMAP and the reconstruction methods, however, can run on more modest hardware (32-40 GB), with tests conducted on a single NVIDIA A100 PCIe 40 GB.
 
 ### Setup
 
@@ -102,7 +105,8 @@ augenblick/
 │   └── reconstruction/        #   Surface reconstruction scripts
 │       ├── run_sugar.py
 │       ├── run_2dgs.py
-│       └── run_pgsr.py
+│       ├── run_pgsr.py
+│       └── run_gw.py
 ├── src/
 │   ├── vggt/                  # VGGT model (Meta)
 │   │   └── vggt/              #   Importable Python package
@@ -124,6 +128,13 @@ augenblick/
 │   │   ├── gaussian_renderer/ #   Plane rasterizer
 │   │   ├── scene/             #   Scene + Gaussian + AppModel
 │   │   └── utils/             #   Loss functions, graphics
+│   ├── gaussian_wrapping/     # Gaussian Wrapping (Blobs to Spokes)
+│   │   ├── gaussian_renderer/ #   ours/radegs/sof rasterizers
+│   │   ├── extraction/        #   Pivot sampling + mesh extraction
+│   │   ├── regularization/    #   Normal-field, multiview, MILo, SDF
+│   │   ├── scene/             #   Scene + GaussianModel + Mesh
+│   │   ├── scripts/           #   End-to-end driver scripts
+│   │   └── submodules/        #   CUDA rasterizers + tetra triangulation
 │   ├── light_glue/            # LightGlue (submodule)
 │   └── pytorch3d/             # PyTorch3D (submodule)
 └── CLAUDE.md                  # Detailed codebase documentation
@@ -173,8 +184,8 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 
 # Classical COLMAP
 bash pipeline/sfm/run_colmap.sh \
-    --input_path /path/to/scene/ \
-    --output_path /output/colmap/
+    --input_dir /path/to/scene/ \
+    --output_dir /output/colmap/
 ```
 
 ### Step 2: Surface Reconstruction
@@ -204,6 +215,20 @@ python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
     --max_depth 10.0 --voxel_size 0.001
 ```
 
+#### Gaussian Wrapping
+
+```bash
+python pipeline/reconstruction/run_gw.py <sfm> /output/gw/ \
+    --iterations 30000 --sh_degree 3 --max_gaussians 6000000 \
+    --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
+```
+
+The wrapper runs three sequential stages: training (`train.py --rasterizer ours`),
+pivot-based marching-tetrahedra mesh extraction (`pivot_based_mesh_extraction.py`),
+and texture refinement (`texture_mesh.py`). Pass `-r 2` to downsample images for
+metrics-comparable runs; pass `--isosurface_value 0.2` if the mesh is missing fine
+details.
+
 ### Output
 
 | Method | Output files | Location |
@@ -211,6 +236,7 @@ python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
 | SuGaR | Textured mesh (`.obj`), point cloud (`.ply`) | `<output>/refined_mesh/<scene>/` |
 | 2DGS | Triangle mesh (`.ply`) | `<model>/train/ours_<iter>/fuse_post.ply` |
 | PGSR | Triangle mesh (`.ply`) | `<model>/mesh/tsdf_fusion_post.ply` |
+| Gaussian Wrapping | Extracted mesh, post-processed mesh, textured mesh (`.ply`) | `<output>/mesh_ours_2pivots{,_post,_post_texture_refined_<iter>}.ply` |
 
 ## Input Requirements
 
@@ -247,6 +273,17 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
     -s <path-to-save-file>
     --paramOverrides FeatureExtraction:masksFolder=<path-to-masks>
 ```
+
+## Runtime Comparison
+The following table compares the total runtime of each method on a sample scene with 138 high-resolution images (6240x4160) and masks, run on an NVIDIA A100 PCIe 40 GB GPU.
+
+| Method                        | Total Runtime     |
+|-------------------------------|-------------------|
+| COLMAP + SuGaR                | ~80 mins          |
+| COLMAP + 2DGS                 | ~40 mins          |
+| COLMAP + PGSR                 | ~70 mins          |
+| COLMAP + Gaussian Wrapping    | ~65 mins          |
+| Meshroom                      | ~60 mins          |
 
 ## Citations
 

@@ -5,7 +5,7 @@
 # directly with 3D Gaussian Splatting, SuGaR, and 2DGS.
 #
 # Output structure:
-#   <output_path>/
+#   <output_dir>/
 #   ├── images/            # Undistorted images
 #   ├── masks/             # Image masks
 #   └── sparse/
@@ -16,11 +16,11 @@
 #           └── points3D.ply
 #
 # Usage:
-#   bash scripts/run_colmap.sh --input_path /path/to/dataset --output_path /path/to/output
+#   bash scripts/run_colmap.sh --input_dir /path/to/dataset --output_dir /path/to/output
 #
 # All flags:
-#   --input_path      Path to source dataset (required)
-#   --output_path     Path for COLMAP output (required)
+#   --input_dir      Path to source dataset (required)
+#   --output_dir     Path for COLMAP output (required)
 #   --camera_model    Camera model: SIMPLE_RADIAL, PINHOLE, OPENCV, etc. (default: PINHOLE)
 #   --single_camera   Use a shared camera for all images: 0 or 1 (default: 1)
 #   --no_gpu          Disable GPU acceleration for SIFT
@@ -41,7 +41,7 @@ IMAGE_PATH=""
 OUTPUT_PATH=""
 
 print_usage() {
-    echo "Usage: $0 --image_path <path> --output_path <path> [options]"
+    echo "Usage: $0 --input_dir <path> --output_dir <path> [options]"
     echo ""
     echo "Options:"
     echo "  --camera_model <model>      Camera model (default: PINHOLE)"
@@ -57,8 +57,8 @@ print_usage() {
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)      print_usage;       exit 0 ;;
-        --input_path)   INPUT_PATH="$2";   shift 2 ;;
-        --output_path)  OUTPUT_PATH="$2";  shift 2 ;;
+        --input_dir)    INPUT_PATH="$2";    shift 2 ;;
+        --output_dir)   OUTPUT_PATH="$2";   shift 2 ;;
         --camera_model) CAMERA_MODEL="$2"; shift 2 ;;
         --single_camera) SINGLE_CAMERA="$2"; shift 2 ;;
         --no_gpu)       USE_GPU=0;         shift   ;;
@@ -72,7 +72,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$INPUT_PATH" ] || [ -z "$OUTPUT_PATH" ]; then
-    echo "ERROR: --image_path and --output_path are required."
+    echo "ERROR: --image_dir and --output_dir are required."
     print_usage
     exit 1
 fi
