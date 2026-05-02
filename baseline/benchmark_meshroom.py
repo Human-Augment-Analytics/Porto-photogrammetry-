@@ -74,6 +74,7 @@ def main():
     )
     parser.add_argument("--texture_side", type=int, default=8192, help="Texturing.textureSide")
     parser.add_argument("--texturing_downscale", type=int, default=2, help="Texturing.downscale")
+    parser.add_argument("--max_threads", type=int, default=16, help="FeatureExtraction:maxThreads")
 
     args = parser.parse_args()
     input_dir = args.input_dir.resolve()
@@ -103,6 +104,7 @@ def main():
     logger.info("=" * 60)
 
     param_overrides = [
+        f"FeatureExtraction:maxThreads={args.max_threads}",
         f"FeatureExtraction:describerPreset={args.describer_preset}",
         f"FeatureExtraction:describerQuality={args.describer_quality}",
         f"FeatureExtraction:describerTypes={args.describer_types}",

@@ -30,7 +30,7 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 
 - Linux (tested on RHEL 9)
 - Python 3.10
-- CUDA-capable GPU (24 GB+ VRAM recommended)
+- CUDA-capable GPU (80 GB+ VRAM recommended)
 - CUDA 12.8
 
 ### Setup
@@ -50,7 +50,7 @@ git submodule update --init --recursive
 python -m pip install -r requirements.txt
 
 # Install PyTorch with CUDA (adjust URL for your CUDA version)
-python -m pip install torch==2.9.1 torchvision==0.24.1 torchaudio==2.9.1 \
+python -m pip install torch==2.9.1 torchvision==0.24.1 \
     --index-url https://download.pytorch.org/whl/cu130
 
 # Install nvdiffrast (required by SuGaR)
@@ -64,10 +64,27 @@ python -m pip install \
     src/pytorch3d \
     src/2dgs/submodules/diff-surfel-rasterization \
     src/pgsr/submodules/diff-plane-rasterization \
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
+    src/gaussian_wrapping/submodules/fused-ssim \
+    src/gaussian_wrapping/submodules/warp-patch-ncc \
     --no-build-isolation
 
 # Install VGGT as editable package
 python -m pip install -e src/vggt --no-build-isolation
+
+# Build and install Tetra-NeRF triangulation module
+export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH
+conda install -y cmake
+conda install -y conda-forge::gmp
+conda install -y conda-forge::cgal
+cd src/gaussian_wrapping/submodules/tetra_triangulation
+cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCGAL_DIR=$CONDA_PREFIX/lib/cmake/CGAL \
+        -DTorch_DIR=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'share/cmake/Torch'))") \
+        -DCMAKE_IGNORE_PATH="$ALICEVISION_ROOT;$ALICEVISION_ROOT/bin;$ALICEVISION_ROOT/lib"
+make
+pip install -e .
 ```
 
 VGGT model weights (~4 GB) are downloaded automatically from `facebook/VGGT-1B` on HuggingFace on first run.
@@ -151,7 +168,7 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 # VGGT (no BA)
 python pipeline/sfm/run_vggt_to_colmap.py \
     --input_dir /path/to/scene/ \
-    --output_dir /output/vggt_mask/ \
+    --output_dir /output/vggt/ \
     --conf_thres_value 1.0
 
 # Classical COLMAP
@@ -262,6 +279,16 @@ python "$MESHROOM_ROOT/bin/meshroom_batch" \
   author={Chen, Danpeng and Li, Hai and Ye, Weicai and Wang, Yifan and Xie, Weijian and Zhai, Shangjin and Wang, Nan and Liu, Haomin and Bao, Hujun and Zhang, Guofeng},
   journal={arXiv preprint arXiv:2406.06521},
   year={2024}
+}
+
+@misc{gomez2026blobsspokeshighfidelitysurface,
+      title={From Blobs to Spokes: High-Fidelity Surface Reconstruction via Oriented Gaussians}, 
+      author={Diego Gomez and Antoine Guédon and Nissim Maruani and Bingchen Gong and Maks Ovsjanikov},
+      year={2026},
+      eprint={2604.07337},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2604.07337}, 
 }
 
 @inproceedings{schoenberger2016sfm,
