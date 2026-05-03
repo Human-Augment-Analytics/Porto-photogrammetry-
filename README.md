@@ -289,6 +289,12 @@ run on an NVIDIA B200 80 GB GPU.
 | VGGT              | ~3 mins       |
 | VGGT + BA         | ~15 mins      |
 
+## Reconstruction Quality
+### Mammal Skull
+![Mammal Skull](assets/36342.png)
+### Herp Skull
+![Herp Skull](assets/3998.png)
+
 ## Citations
 
 ```bibtex
