@@ -235,12 +235,6 @@ python pipeline/reconstruction/run_gw.py <sfm> /output/gw/ \
     --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
 ```
 
-The wrapper runs three sequential stages: training (`train.py --rasterizer ours`),
-pivot-based marching-tetrahedra mesh extraction (`pivot_based_mesh_extraction.py`),
-and texture refinement (`texture_mesh.py`). Pass `-r 2` to downsample images for
-metrics-comparable runs; pass `--isosurface_value 0.2` if the mesh is missing fine
-details.
-
 ### Output
 
 | Method | Output files | Location |
