@@ -1,0 +1,9 @@
+[submodule "src/light_glue"]
+	path = src/light_glue
+	url = https://github.com/cvg/LightGlue.git
+[submodule "src/pytorch3d"]
+	path = src/pytorch3d
+	url = https://github.com/facebookresearch/pytorch3d.git
+[submodule "src/gaussian_wrapping/submodules/Depth-Anything-V2"]
+	path = src/gaussian_wrapping/submodules/Depth-Anything-V2
+	url = https://github.com/DepthAnything/Depth-Anything-V2.git
