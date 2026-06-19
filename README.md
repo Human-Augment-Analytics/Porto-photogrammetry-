@@ -38,17 +38,36 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 
 ### Setup
 
+Clone the repository and create the environment:
+
 ```bash
 git clone --recursive <repository-url> porto-photogrammetry
 cd porto-photogrammetry
-
-# Create conda environment
 conda create --name augenblick python=3.10
 conda activate augenblick
-
-# Initialise submodules (SuGaR, LightGlue, PyTorch3D)
 git submodule update --init --recursive
+```
 
+Then install the pipeline. **Recommended — automated per-GPU setup**, which sets the CUDA
+architecture, toolkit, and PyTorch wheel for your GPU:
+
+```bash
+bash scripts/auto_setup.sh      # detect the GPU and dispatch to the right wrapper
+# ...or select explicitly:
+bash scripts/setup_l40s.sh      # L40S  (sm 8.9,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_a100.sh      # A100  (sm 8.0,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_h100.sh      # H100  (sm 9.0,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_b200.sh      # B200  (sm 10.0, CUDA 12.8 / torch 2.9.1)
+```
+
+Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the
+Gaussian Wrapping CGAL build.
+
+#### Manual setup
+
+For unsupported GPUs or debugging, the scripts above wrap these steps:
+
+```bash
 # Install Python dependencies
 python -m pip install -r requirements.txt
 
