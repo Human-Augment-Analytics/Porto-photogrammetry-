@@ -13,6 +13,7 @@ Modern photogrammetry pipelines are two-stage: an SfM method first estimates cam
 | COLMAP | Classical incremental SfM with SIFT features and bundle adjustment |
 | VGGT | Feed-forward transformer that regresses camera parameters and a point map in a single pass |
 | VGGT + BA | VGGT output refined by VGGSfM tracking and bundle adjustment |
+| Turntable | Refines an existing SfM scene with an exact turntable rig prior (fixed axis, constant step) |
 
 **Stage 2 – Gaussian Mesh Extraction:**
 
@@ -120,6 +121,7 @@ augenblick/
 │   │   └── prepare_uf_dataset.py
 │   ├── sfm/                   #   Structure-from-Motion scripts
 │   │   ├── run_vggt_to_colmap.py
+│   │   ├── run_turntable_to_colmap.py
 │   │   └── run_colmap.sh
 │   └── reconstruction/        #   Surface reconstruction scripts
 │       ├── run_sugar.py
@@ -217,6 +219,13 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 bash pipeline/sfm/run_colmap.sh \
     --input_dir /path/to/scene/ \
     --output_dir /output/colmap/
+
+# Turntable rig refinement (object on a turntable, static cameras)
+# Takes an existing COLMAP scene and re-solves poses on exact circular orbits.
+python pipeline/sfm/run_turntable_to_colmap.py \
+    --input_dir /output/vggt_ba/ \
+    --output_dir /output/turntable/ \
+    --use_masks
 ```
 
 ### Step 2: Surface Reconstruction
