@@ -371,7 +371,7 @@ run on an NVIDIA B200 80 GB GPU.
 
 ## Acknowledgements
 
-This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, Bree Wang, and Riyam Zaman.
+This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, Bree Shi, and Riyam Zaman.
 
 ## Support
 
