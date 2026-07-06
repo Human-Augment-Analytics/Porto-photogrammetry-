@@ -1,232 +1,378 @@
-# Augenblick: A Photogrammetry Pipeline based on VGG-T + NeuS2
+# Augenblick
 
-A high-quality 3D reconstruction pipeline that combines VGG-T feature extraction with NeuS2 neural surface reconstruction to generate detailed meshed geometry from multi-view images.
+A two-stage photogrammetry pipeline for high-fidelity 3D object reconstruction from multi-view images. The pipeline pairs a Structure-from-Motion (SfM) initialiser with a Gaussian-based mesh extractor.
 
 ## Overview
 
-This pipeline leverages state-of-the-art computer vision and neural rendering techniques to create accurate 3D models from photogrammetric input. The system is designed for high-quality surface reconstruction with robust feature matching and neural implicit surface representation.
+Modern photogrammetry pipelines are two-stage: an SfM method first estimates camera parameters and a sparse point cloud, which then initialises a dense surface reconstruction step. This project evaluates how different SfM initialisations interact with Gaussian-primitive-based mesh extraction methods.
 
-### Key Features
+**Stage 1 – Structure-from-Motion:**
 
-- **Multi-view stereo reconstruction** with neural implicit surfaces
-- **Robust feature extraction** using VGG-T architecture
-- **High-quality mesh generation** through NeuS2's neural surface reconstruction
-- **End-to-end pipeline** from raw images to textured 3D models
-- **Scalable processing** for varying numbers of input views
+| Method | Description |
+|--------|-------------|
+| COLMAP | Classical incremental SfM with SIFT features and bundle adjustment |
+| VGGT | Feed-forward transformer that regresses camera parameters and a point map in a single pass |
+| VGGT + BA | VGGT output refined by VGGSfM tracking and bundle adjustment |
 
-## Architecture
+**Stage 2 – Gaussian Mesh Extraction:**
 
-The pipeline consists of two main components working in sequence:
+| Method | Description |
+|--------|-------------|
+| SuGaR | Surface-regularised 3D Gaussians with Poisson mesh extraction and UV texturing |
+| 2DGS | Flat 2D Gaussian surfel disks with TSDF depth fusion |
+| PGSR | Planar-consistent Gaussians with multi-view geometric/photometric losses and TSDF meshing |
+| Gaussian Wrapping | Stochastic oriented Gaussians with pivot-based marching-tetrahedra extraction and texture refinement |
 
-### 1. VGG-T Feature Extraction
-VGG-T (Vision Graph Neural Network - Transformer) serves as our feature extraction backbone, providing:
-- Dense feature maps from input images
-- Multi-scale feature representations
-- Robust feature matching across viewpoints
-- Camera pose estimation refinement
-
-### 2. NeuS2 Neural Surface Reconstruction
-NeuS2 takes the VGG-T output and performs neural implicit surface reconstruction:
-- Learns implicit surface representations from multi-view features
-- Generates high-quality surface normals and geometry
-- Produces watertight meshes with fine detail preservation
-- Supports texture reconstruction and material estimation
-
-### Pipeline Flow
-```
-Input Images → VGG-T Feature Extraction → Camera Poses + Features → NeuS2 Reconstruction → 3D Mesh Output
-```
-
-The VGG-T component processes input images to extract dense features and estimate camera poses, which are then fed into NeuS2 for volumetric neural surface reconstruction and final mesh generation.
-
-## Requirements
-
-### System Requirements
-- Python 3.10
-- CUDA-capable GPU (recommended: RTX 3080 or better)
-- 16GB+ RAM
-- 50GB+ available storage
-- VS2019, if on Windows
-
-### Dependencies
-VGG-T and NeuS2 must be configured individually within their subdirectories.
-
-See https://github.com/NVlabs/instant-ngp#building-instant-ngp-windows--linux and https://github.com/19reborn/NeuS2 for NeuS2 setup (PyTorch must be installed with CUDA)
-
-See https://github.com/facebookresearch/vggt for VGG-T (mostly just installing python depedencies)
-
-We recommend using an environment manager such as Anaconda, and have provided an `environment.yml` to facilitate creation under the vggt directory.
-
-Please note that conda doesn't seem to support installing PyTorch with CUDA, so this will have to be installed through pip, i.e. `pip install torch==2.3.1+cu118`
+All combinations are benchmarked on runtime and compared qualitatively against RealityScan (commercial) and Meshroom (open-source) baselines.
 
 ## Installation
 
+### Requirements
+
+- Linux (tested on RHEL 9)
+- Python 3.10
+- CUDA-capable GPU (80 GB+ VRAM recommended)
+- CUDA 12.8
+
+**Note**: VGGT requires a GPU with at least 80 GB of VRAM for large scenes. COLMAP and the reconstruction methods, however, can run on more modest hardware (32-40 GB), with tests conducted on a single NVIDIA A100 PCIe 40 GB.
+
+### Setup
+
 ```bash
-git clone --recursive [repository-url]
-cd augenblick
+git clone --recursive <repository-url> porto-photogrammetry
+cd porto-photogrammetry
 
-conda env create -n augenblick -f environment.yml
-conda actiavte augenblick
+# Create conda environment
+conda create --name augenblick python=3.10
+conda activate augenblick
 
-cd src/NeuS2
+# Initialise submodules (SuGaR, LightGlue, PyTorch3D)
 git submodule update --init --recursive
-cmake . -B build
-# If above doesn't work, see Troubleshooting below
-cmake --build build --config RelWithDebInfo -j 
 
-cd ../data
-# Install datasets here, i.e. https://roboimagedata.compute.dtu.dk/?page_id=36
+# Install Python dependencies
+python -m pip install -r requirements.txt
 
-# Note: you will have to install pytorch3d manually
-# Depending on your platform, this can be varying degrees of complex
+# Install PyTorch with CUDA (adjust URL for your CUDA version)
+python -m pip install torch==2.9.1 torchvision==0.24.1 \
+    --index-url https://download.pytorch.org/whl/cu130
 
-# Windows:
-# First step is to clone the pytorch3d repo here, and then run the following
-# Note you need to be on an administrator Developer Command Prompt
-python config\\fix.py
-cd pytorch3d
-git checkout 3388d3
-rmdir /s /q pytorch3d\csrc\pulsar
-if exist pytorch3d\renderer\points\pulsar rmdir /s /q pytorch3d\renderer\points\pulsar
-call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat"
-python build_pytorch3d_no_pulsar.py
+# Install nvdiffrast (required by SuGaR)
+python -m pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation
+
+# Install CUDA submodules and local packages
+python -m pip install \
+    src/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization \
+    src/sugar/gaussian_splatting/submodules/simple-knn \
+    src/light_glue \
+    src/pytorch3d \
+    src/2dgs/submodules/diff-surfel-rasterization \
+    src/pgsr/submodules/diff-plane-rasterization \
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
+    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
+    src/gaussian_wrapping/submodules/fused-ssim \
+    src/gaussian_wrapping/submodules/warp-patch-ncc \
+    --no-build-isolation
+
+# Install VGGT as editable package
+python -m pip install -e src/vggt --no-build-isolation
+
+# Build and install Tetra-NeRF triangulation module
+export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH
+conda install -y cmake
+conda install -y conda-forge::gmp
+conda install -y conda-forge::cgal
+cd src/gaussian_wrapping/submodules/tetra_triangulation
+cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+        -DCGAL_DIR=$CONDA_PREFIX/lib/cmake/CGAL \
+        -DTorch_DIR=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'share/cmake/Torch'))") \
+        -DCMAKE_IGNORE_PATH="$ALICEVISION_ROOT;$ALICEVISION_ROOT/bin;$ALICEVISION_ROOT/lib"
+make
+pip install -e .
 ```
+
+VGGT model weights (~4 GB) are downloaded automatically from `facebook/VGGT-1B` on HuggingFace on first run.
 
 ## Project Structure
 
 ```
-# Project structure will be documented here
-photogrammetry-pipeline/
+augenblick/
+├── pipeline/                  # Canonical entry points
+│   ├── preparation/           #   Dataset preparation scripts
+│   │   └── prepare_uf_dataset.py
+│   ├── sfm/                   #   Structure-from-Motion scripts
+│   │   ├── run_vggt_to_colmap.py
+│   │   └── run_colmap.sh
+│   └── reconstruction/        #   Surface reconstruction scripts
+│       ├── run_sugar.py
+│       ├── run_2dgs.py
+│       ├── run_pgsr.py
+│       └── run_gw.py
 ├── src/
-│   ├── vggt/           # VGG-T implementation
-│   ├── neus2/          # NeuS2 implementation
-│   ├── pipeline/       # Main pipeline orchestration
-│   └── utils/          # Utility functions
-├── config/            # Configuration files
-├── data/              # Sample data and datasets
-├── output/           # Generated outputs
-├── tests/             # Unit tests
-└── docs/              # Additional documentation
-```
-
-## Usage
-
-### Quick Start
-```bash
-python src/pipeline/run_pipeline.py ./data/path/to/images --output_dir ./output/
-```
-## Build Instructions
-
-### Testing
-```bash
-# Testing instructions and test suite information
+│   ├── vggt/                  # VGGT model (Meta)
+│   │   └── vggt/              #   Importable Python package
+│   │       ├── models/        #     VGGT, Aggregator
+│   │       ├── heads/         #     Camera, depth, point, track heads
+│   │       ├── layers/        #     Attention, RoPE, patch embedding
+│   │       ├── utils/         #     Loading, pose encoding, geometry
+│   │       └── dependency/    #     COLMAP conversion, tracking
+│   ├── sugar/                 # SuGaR (submodule)
+│   │   ├── gaussian_splatting/#   Embedded vanilla 3DGS
+│   │   ├── sugar_trainers/    #   Coarse + refined training
+│   │   ├── sugar_extractors/  #   Mesh extraction
+│   │   └── sugar_scene/       #   SuGaR model definition
+│   ├── 2dgs/                  # 2D Gaussian Splatting
+│   │   ├── gaussian_renderer/ #   Surfel rasterizer
+│   │   ├── scene/             #   Scene + Gaussian model
+│   │   └── utils/             #   Mesh extraction (TSDF + marching cubes)
+│   ├── pgsr/                  # PGSR
+│   │   ├── gaussian_renderer/ #   Plane rasterizer
+│   │   ├── scene/             #   Scene + Gaussian + AppModel
+│   │   └── utils/             #   Loss functions, graphics
+│   ├── gaussian_wrapping/     # Gaussian Wrapping (Blobs to Spokes)
+│   │   ├── gaussian_renderer/ #   ours/radegs/sof rasterizers
+│   │   ├── extraction/        #   Pivot sampling + mesh extraction
+│   │   ├── regularization/    #   Normal-field, multiview, MILo, SDF
+│   │   ├── scene/             #   Scene + GaussianModel + Mesh
+│   │   ├── scripts/           #   End-to-end driver scripts
+│   │   └── submodules/        #   CUDA rasterizers + tetra triangulation
+│   ├── light_glue/            # LightGlue (submodule)
+│   └── pytorch3d/             # PyTorch3D (submodule)
+└── CLAUDE.md                  # Detailed codebase documentation
 ```
 
 ## Input Requirements
 
-### Image Specifications
-- **Format**: JPG, PNG, or TIFF
-- **Resolution**: Minimum 1024x768, recommended 2048x1536 or higher
-- **Overlap**: 60-80% overlap between adjacent views recommended
-- **Lighting**: Consistent lighting conditions across all views
-- **Focus**: Sharp focus with minimal motion blur
+- **Format**: JPG or PNG
+- **Resolution**: 1024x768 minimum, higher recommended
+- **Overlap**: 60-80% between adjacent views
+- **Lighting**: Consistent across all views
+- **Focus**: Sharp, minimal motion blur
 
-### Camera Setup Recommendations
-- Use consistent camera settings (ISO, aperture, white balance)
-- Capture from multiple viewpoints with good baseline separation
-- Include sufficient texture detail for feature matching
-- Avoid reflective or transparent surfaces when possible
+### Masks
 
-## Output Formats
+Optional foreground masks can be provided as binary PNG files in a `masks/` directory alongside `images/`. Mask filenames should match image stems (e.g., `image001.png` for `image001.jpg`). White pixels indicate foreground; black pixels indicate background.
 
-The pipeline generates several outputs:
-- **3D Mesh**: `.ply`, `.obj`, or `.glb` files
-- **Texture Maps**: High-resolution texture maps
-- **Camera Parameters**: Estimated camera poses and intrinsics
-- **Feature Maps**: Intermediate VGG-T feature representations
-- **Quality Metrics**: Reconstruction accuracy and completeness scores
+## Usage
 
-## Performance Optimization
+All reconstruction backends consume a common COLMAP-format scene directory:
 
-### GPU Memory Management
-
-### Processing Time Estimates
-
-## Troubleshooting
-
-Windows is particularly troublesome for getting everything to play nice, especially since these libraries all need specific versions of their dependencies to work right
-You will likely benefit from running any build errors through GenAI. However, I have included some steps I needed to take on my platform (Win11, GTX 4070 GPU)
-
-Note that it is imperative that you run everything on Visual Studio 2019 and in the Developer Command Prompt
-
-### Install vcpkg & use to build NeuS2
 ```
-cd C:\
-git clone https://github.com/Microsoft/vcpkg.git
-cd vcpkg
-.\bootstrap-vcpkg.bat
-.\vcpkg integrate install
-.\vcpkg install pthreads:x64-windows
-
-cd <this repo path>
-cmake . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+<scene>/
+├── images/         # Source images
+├── masks/          # Optional: binary PNGs (white = foreground)
+└── sparse/
+    └── 0/
+        ├── cameras.bin
+        ├── images.bin
+        └── points3D.bin
 ```
 
-You also may need to manually specify your CUDA include path in the main CMakeLists.txt file, so the conda environment headers do not override the CUDA headers during the build process.
-Locate this line in NeuS2's CMakeLists.txt: `add_library(pyngp SHARED src/python_api.cu)` and below it, add: `target_include_directories(pyngp PRIVATE "C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/include")` (accounting for your path structure)
+### Step 0: Data Preparation
 
-## Examples
+If your source data has mixed images and masks in a flat directory:
 
-### Sample Datasets
-- [Links to example datasets]
-- [Expected outputs for validation]
+```bash
+python pipeline/preparation/prepare_uf_dataset.py /path/to/raw/data \
+    --out /path/to/organized/ --mode copy
+```
 
-### Benchmark Results
-- [Performance benchmarks on standard datasets]
-- [Quality metrics and comparisons]
+### Step 1: Structure-from-Motion
 
-## Acknowledgements & Citations
+Choose one SfM method to produce the COLMAP scene:
 
-If you use this pipeline in your research, please cite:
+```bash
+# VGGT with bundle adjustment
+python pipeline/sfm/run_vggt_to_colmap.py \
+    --input_dir /path/to/scene/ \
+    --output_dir /output/vggt_ba/ \
+    --use_ba --shared_camera \
+    --max_reproj_error 32 --max_query_pts 1048576 --query_frame_num 8
+
+# VGGT (no BA)
+python pipeline/sfm/run_vggt_to_colmap.py \
+    --input_dir /path/to/scene/ \
+    --output_dir /output/vggt/ \
+    --conf_thres_value 1.0
+
+# Classical COLMAP
+bash pipeline/sfm/run_colmap.sh \
+    --input_dir /path/to/scene/ \
+    --output_dir /output/colmap/
+```
+
+### Step 2: Surface Reconstruction
+
+Replace `<sfm>` below with the SfM output directory (e.g., `/output/vggt_ba/`).
+
+#### SuGaR
+
+```bash
+python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
+    --gs_iterations 20000 --iteration_to_load 7000 \
+    --regularization dn_consistency --high_poly --refinement_time long \
+    --white_background
+```
+
+#### 2DGS
+
+```bash
+python pipeline/reconstruction/run_2dgs.py <sfm> /output/2dgs/
+```
+
+#### PGSR
+
+```bash
+python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
+    --max_abs_split_points 0 --opacity_cull_threshold 0.05 \
+    --max_depth 10.0 --voxel_size 0.001
+```
+
+#### Gaussian Wrapping
+
+```bash
+python pipeline/reconstruction/run_gw.py <sfm> /output/gw/ \
+    --iterations 30000 --sh_degree 3 --max_gaussians 6000000 \
+    --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
+```
+
+### Output
+
+| Method | Output files | Location |
+|--------|-------------|----------|
+| SuGaR | Textured mesh (`.obj`), point cloud (`.ply`) | `<output>/refined_mesh/<scene>/` |
+| 2DGS | Triangle mesh (`.ply`) | `<model>/train/ours_<iter>/fuse_post.ply` |
+| PGSR | Triangle mesh (`.ply`) | `<model>/mesh/tsdf_fusion_post.ply` |
+| Gaussian Wrapping | Extracted mesh, post-processed mesh, textured mesh (`.ply`) | `<output>/mesh_ours_2pivots{,_post,_post_texture_refined_<iter>}.ply` |
+
+## Baselines
+
+### Meshroom
+
+Meshroom (AliceVision) is used as the open-source baseline. See [meshroom-setup.md](meshroom-setup.md) for installation instructions.
+
+Once installed and `MESHROOM_ROOT` is set, run the wrapper script to execute a batch reconstruction and log runtime:
+
+```bash
+python baseline/benchmark_meshroom.py /path/to/scene/ /output/meshroom/ \
+    --save_file /output/meshroom/graph.mg
+```
+
+The wrapper resolves `meshroom_batch` from `$MESHROOM_ROOT` (or `--meshroom_root`), runs the `photogrammetry` pipeline by default, and prints total runtime on completion. To invoke `meshroom_batch` directly instead:
+
+```bash
+python "$MESHROOM_ROOT/bin/meshroom_batch" \
+    -i <path-to-input-images> \
+    -o <path-to-output-folder> \
+    -p photogrammetry \
+    -s <path-to-save-file>
+    --paramOverrides FeatureExtraction:masksFolder=<path-to-masks>
+```
+
+## Runtime Comparison
+### End-to-end
+The following table compares the total runtime of each method on a sample scene with 138 high-resolution images (6240x4160) and masks, run on an NVIDIA A100 PCIe 40 GB GPU.
+
+| Method                        | Total Runtime     |
+|-------------------------------|-------------------|
+| COLMAP + SuGaR                | ~80 mins          |
+| COLMAP + 2DGS                 | ~40 mins          |
+| COLMAP + PGSR                 | ~70 mins          |
+| COLMAP + Gaussian Wrapping    | ~65 mins          |
+| Meshroom                      | ~60 mins          |
+
+### Structure-from-Motion
+The following table compares the runtime of the for each SfM method on the same scene as above,
+run on an NVIDIA B200 80 GB GPU.
+| Method            | Runtime       |
+|-------------------|---------------|
+| COLMAP            | ~10 mins      |
+| VGGT              | ~3 mins       |
+| VGGT + BA         | ~15 mins      |
+
+## Reconstruction Quality
+### Mammal Skull
+![Mammal Skull](assets/36342.png)
+### Herp Skull
+![Herp Skull](assets/3998.png)
+
+## Citations
 
 ```bibtex
-@software{photogrammetry_pipeline_2025,
-  title={Photogrammetry Pipeline: VGG-T + NeuS2},
-  author={[Clinton Kunhardt and James Hennessey and Charles Clark and Caleb Wheeler and Xin Lin and Bree Wang and Arthur Porto]},
-  year={2025},
-  url={[repository-url]}
+@inproceedings{wang2025vggt,
+  title={VGGT: Visual Geometry Grounded Transformer},
+  author={Wang, Jianyuan and Chen, Minghao and Karaev, Nikita and Vedaldi, Andrea and Rupprecht, Christian and Novotny, David},
+  booktitle={Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+  year={2025}
+}
+
+@article{guedon2023sugar,
+  title={SuGaR: Surface-Aligned Gaussian Splatting for Efficient 3D Mesh Reconstruction and High-Quality Mesh Rendering},
+  author={Gu{\'e}don, Antoine and Lepetit, Vincent},
+  journal={CVPR},
+  year={2024}
+}
+
+@inproceedings{Huang2DGS2024,
+    title={2D Gaussian Splatting for Geometrically Accurate Radiance Fields},
+    author={Huang, Binbin and Yu, Zehao and Chen, Anpei and Geiger, Andreas and Gao, Shenghua},
+    publisher = {Association for Computing Machinery},
+    booktitle = {SIGGRAPH 2024 Conference Papers},
+    year      = {2024},
+    doi       = {10.1145/3641519.3657428}
+}
+
+@article{chen2024pgsr,
+  title={PGSR: Planar-based Gaussian Splatting for Efficient and High-Fidelity Surface Reconstruction},
+  author={Chen, Danpeng and Li, Hai and Ye, Weicai and Wang, Yifan and Xie, Weijian and Zhai, Shangjin and Wang, Nan and Liu, Haomin and Bao, Hujun and Zhang, Guofeng},
+  journal={arXiv preprint arXiv:2406.06521},
+  year={2024}
+}
+
+@misc{gomez2026blobsspokeshighfidelitysurface,
+      title={From Blobs to Spokes: High-Fidelity Surface Reconstruction via Oriented Gaussians}, 
+      author={Diego Gomez and Antoine Guédon and Nissim Maruani and Bingchen Gong and Maks Ovsjanikov},
+      year={2026},
+      eprint={2604.07337},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2604.07337}, 
+}
+
+@inproceedings{schoenberger2016sfm,
+    author={Sch\"{o}nberger, Johannes Lutz and Frahm, Jan-Michael},
+    title={Structure-from-Motion Revisited},
+    booktitle={Conference on Computer Vision and Pattern Recognition (CVPR)},
+    year={2016},
+}
+
+@inproceedings{schoenberger2016mvs,
+    author={Sch\"{o}nberger, Johannes Lutz and Zheng, Enliang and Pollefeys, Marc and Frahm, Jan-Michael},
+    title={Pixelwise View Selection for Unstructured Multi-View Stereo},
+    booktitle={European Conference on Computer Vision (ECCV)},
+    year={2016},
+}
+
+@inproceedings{schoenberger2016vote,
+    author={Sch\"{o}nberger, Johannes Lutz and Price, True and Sattler, Torsten and Frahm, Jan-Michael and Pollefeys, Marc},
+    title={A Vote-and-Verify Strategy for Fast Spatial Verification in Image Retrieval},
+    booktitle={Asian Conference on Computer Vision (ACCV)},
+    year={2016},
+}
+
+@inproceedings{alicevision2021,
+  title={{A}liceVision {M}eshroom: An open-source {3D} reconstruction pipeline},
+  author={Carsten Griwodz and Simone Gasparini and Lilian Calvet and Pierre Gurdjos and Fabien Castan and Benoit Maujean and Gregoire De Lillo and Yann Lanthony},
+  booktitle={Proceedings of the 12th ACM Multimedia Systems Conference - {MMSys '21}},
+  doi = {10.1145/3458305.3478443},
+  publisher = {ACM Press},
+  year = {2021}
 }
 ```
 
-### Related Work Citations
-```bibtex
-@misc{wang2023neus2fastlearningneural,
-      title={NeuS2: Fast Learning of Neural Implicit Surfaces for Multi-view Reconstruction}, 
-      author={Yiming Wang and Qin Han and Marc Habermann and Kostas Daniilidis and Christian Theobalt and Lingjie Liu},
-      year={2023},
-      eprint={2212.05231},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2212.05231}, 
-}
-@misc{wang2025vggtvisualgeometrygrounded,
-      title={VGGT: Visual Geometry Grounded Transformer}, 
-      author={Jianyuan Wang and Minghao Chen and Nikita Karaev and Andrea Vedaldi and Christian Rupprecht and David Novotny},
-      year={2025},
-      eprint={2503.11651},
-      archivePrefix={arXiv},
-      primaryClass={cs.CV},
-      url={https://arxiv.org/abs/2503.11651}, 
-}
-```
+## Acknowledgements
+
+This project was developed as part of a research project at Georgia Institute of Technology under the supervision of Dr. Arthur Porto. Original pipeline contributors: Clinton Kunhardt, James Hennessey, Xin Lin, and Syed Fahad Rizvi, with support provided by Charles Clark, Caleb Wheeler, Bree Wang, and Riyam Zaman.
 
 ## Support
 
-For questions, issues, or feature requests:
-- **Issues**: [Link to issue tracker]
-- **Discussions**: [Link to discussions forum]
-- **Email**: ckunhardt3@gatech.edu
-
----
-
-*Last updated: 2025-06-*
+For questions or issues, contact: srizvi63@gatech.edu

@@ -1,0 +1,16 @@
+*.pyc
+.vscode
+output
+build
+data
+*.ply
+**/PKG-INFO
+# submodules
+**__pycache__**
+*.png
+*.out
+eval
+*.npz
+**/tmp
+
+submodules/diff-surfel-rasterization/third_party/glm/doc/
