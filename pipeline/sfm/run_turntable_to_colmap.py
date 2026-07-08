@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
-"""Turntable-aware SfM refinement (VGGT/COLMAP poses -> exact rig -> COLMAP).
-
-For turntable captures (object rotates, cameras static), every view is a fixed
-camera seeing the object at a known angle. Given an existing COLMAP scene, this
-fits the rig (axis, angular step, one pose + intrinsic per physical camera),
-regenerates exact poses on circular orbits, and re-triangulates with masked SIFT.
-
-"""
+"""Turntable-aware SfM refinement: fit the camera rig, refine it with a small
+bundle adjustment, and re-triangulate the input tracks against the fixed poses.
+Falls back to masked SIFT when the input has no usable tracks."""
 import argparse
 import logging
 import os
@@ -60,22 +55,30 @@ def fit_axis_step(groups):
     axis /= np.linalg.norm(axis)
     p0 = np.mean(mids, 0)
 
-    steps = []
+    # angular step: least-squares slope of unwrapped angle vs frame index
+    e1 = np.array([1.0, 0.0, 0.0])
+    if abs(e1 @ axis) > 0.9:
+        e1 = np.array([0.0, 1.0, 0.0])
+    e1 = e1 - (e1 @ axis) * axis
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(axis, e1)
+
+    slopes = []
     for ims in groups.values():
+        if len(ims) < 3:
+            continue
         v = centers(ims) - p0
         v = v - np.outer(v @ axis, axis)
-        v /= np.linalg.norm(v, axis=1, keepdims=True)
-        for i in range(len(v) - 1):
-            cr = np.cross(v[i], v[i + 1])
-            steps.append(np.degrees(np.arctan2(
-                np.sign(cr @ axis) * np.linalg.norm(cr),
-                np.clip(v[i] @ v[i + 1], -1, 1))))
-    return axis, p0, float(np.median(steps))
+        ang = np.unwrap(np.arctan2(v @ e2, v @ e1))
+        idx = np.arange(len(ang))
+        slope = np.polyfit(idx, ang, 1)[0]
+        slopes.append(np.degrees(slope))
+    return axis, p0, float(np.median(slopes))
 
 
 def fit_rig_poses(groups, axis, p0, step):
-    out, dc, dr = {}, [], []
-    for ims in groups.values():
+    out, dc, dr, rig = {}, [], [], {}
+    for k, ims in groups.items():
         Rc_est, Cc_est = [], []
         for i, im in enumerate(ims):
             R, t = Rt(im)
@@ -84,6 +87,7 @@ def fit_rig_poses(groups, axis, p0, step):
             Cc_est.append(p0 + Rf(axis, i * step) @ (C - p0))
         Rc = Rot.from_matrix(np.array(Rc_est)).mean().as_matrix()
         Cc = np.mean(Cc_est, 0)
+        rig[k] = (Rc, Cc)
         for i, im in enumerate(ims):
             Rn = Rc @ Rf(axis, i * step)
             Cn = p0 + Rf(axis, i * step).T @ (Cc - p0)
@@ -91,7 +95,226 @@ def fit_rig_poses(groups, axis, p0, step):
             dc.append(np.linalg.norm(Cn - (-R.T @ t)))
             dr.append(np.degrees(np.linalg.norm(Rot.from_matrix(Rn @ R.T).as_rotvec())))
             out[im.name] = (Rn, Cn)
-    return out, float(np.mean(dc)), float(np.mean(dr))
+    return out, float(np.mean(dc)), float(np.mean(dr)), rig
+
+
+def _batch_dlt(P, uv):
+    x, y = uv[..., 0], uv[..., 1]
+    A = np.concatenate([x[..., None] * P[..., 2, :] - P[..., 0, :],
+                        y[..., None] * P[..., 2, :] - P[..., 1, :]], axis=1)
+    _, _, Vt = np.linalg.svd(A)
+    Xh = Vt[:, -1, :]
+    return Xh[:, :3] / Xh[:, 3:4]
+
+
+def apply_track_preserving(rec, poses, regex, max_reproj=None, min_track=3, max_obs=20):
+    """Snap each image to its rig pose and re-triangulate the existing tracks,
+    dropping points over max_reproj (default 2.5x the median). Mutates rec."""
+    ids = sorted(rec.images.keys())
+    ipos = {iid: i for i, iid in enumerate(ids)}
+    N = len(ids)
+    Pn = np.zeros((N, 3, 4))
+    intr = np.zeros((N, 3))
+    xy = {}
+    for iid in ids:
+        im = rec.images[iid]
+        R, C = poses[im.name]
+        Pn[ipos[iid]] = np.hstack([R, (-R @ C).reshape(3, 1)])
+        intr[ipos[iid]] = rec.cameras[im.camera_id].params[:3]
+        xy[ipos[iid]] = np.array([p.xy for p in im.points2D])
+
+    by_len = defaultdict(lambda: ([], [], []))   # L -> (pids, img-idx rows, uv rows)
+    to_delete = []
+    for pid, pt in rec.points3D.items():
+        els = pt.track.elements
+        if len(els) < min_track:
+            to_delete.append(pid)
+            continue
+        if len(els) > max_obs:
+            els = els[:max_obs]
+        ii = np.fromiter((ipos[e.image_id] for e in els), int, len(els))
+        uvv = np.array([xy[i][e.point2D_idx] for e, i in zip(els, ii)])
+        by_len[len(ii)][0].append(pid)
+        by_len[len(ii)][1].append(ii)
+        by_len[len(ii)][2].append(uvv)
+
+    cand = {}
+    for L, (pids, iis, uvs) in by_len.items():
+        ii = np.stack(iis); uv = np.stack(uvs)
+        f = intr[ii, 0]; cx = intr[ii, 1]; cy = intr[ii, 2]
+        uvn = np.stack([(uv[..., 0] - cx) / f, (uv[..., 1] - cy) / f], axis=-1)
+        Pm = Pn[ii]
+        X = _batch_dlt(Pm, uvn)
+        Xh = np.concatenate([X, np.ones((len(X), 1))], 1)
+        Xc = np.einsum('mlij,mj->mli', Pm, Xh)
+        uu = f * Xc[..., 0] / Xc[..., 2] + cx
+        vv = f * Xc[..., 1] / Xc[..., 2] + cy
+        err = np.hypot(uu - uv[..., 0], vv - uv[..., 1]).mean(1)
+        front = (Xc[..., 2] > 0).all(1)
+        for k, pid in enumerate(pids):
+            cand[pid] = (X[k], float(err[k]), bool(front[k]), L)
+
+    if max_reproj is None:
+        med = np.median([c[1] for c in cand.values()]) if cand else 1.0
+        max_reproj = max(2.0, 2.5 * med)
+
+    errs, tls = [], []
+    for pid, (X, err, front, L) in cand.items():
+        if err < max_reproj and front:
+            rec.points3D[pid].xyz = X.tolist()
+            errs.append(err); tls.append(L)
+        else:
+            to_delete.append(pid)
+
+    for iid in ids:
+        im = rec.images[iid]
+        R, C = poses[im.name]
+        q = Rot.from_matrix(R).as_quat()
+        im.cam_from_world = pycolmap.Rigid3d(
+            pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C)
+    for pid in to_delete:
+        rec.delete_point3D(pid)
+
+    return dict(pts=len(errs), thr=float(max_reproj),
+                track=float(np.mean(tls)) if tls else 0.0,
+                reproj=float(np.mean(errs)) if errs else -1.0)
+
+
+def rig_poses(groups, axis, p0, step, rig):
+    axis = axis / np.linalg.norm(axis)
+    out = {}
+    for k, ims in groups.items():
+        Rc, Cc = rig[k]
+        for i, im in enumerate(ims):
+            Ri = Rf(axis, i * step)
+            out[im.name] = (Rc @ Ri, p0 + Ri.T @ (Cc - p0))
+    return out
+
+
+def _triangulate_batched(Rn, Cn, f, cx, cy, uv, offs, cnts):
+    tn = -np.einsum('mij,mj->mi', Rn, Cn)
+    P = np.concatenate([Rn, tn[:, :, None]], axis=2)          # (M,3,4)
+    uvn = np.stack([(uv[:, 0] - cx) / f, (uv[:, 1] - cy) / f], axis=-1)
+    npts = len(offs)
+    X = np.zeros((npts, 3))
+    err = np.zeros(npts)
+    order = np.argsort(cnts)
+    L = cnts[order]
+    for lval in np.unique(L):
+        rows = order[L == lval]
+        idx = np.stack([np.arange(offs[r], offs[r] + lval) for r in rows])  # (m,lval)
+        Pm = P[idx]                                            # (m,lval,3,4)
+        uvm = uvn[idx]                                         # (m,lval,2)
+        Xm = _batch_dlt(Pm, uvm)
+        Xh = np.concatenate([Xm, np.ones((len(Xm), 1))], 1)
+        Xc = np.einsum('mlij,mj->mli', Pm, Xh)
+        z = np.where(np.abs(Xc[..., 2]) < 1e-9, 1e-9, Xc[..., 2])
+        uu = f[idx] * Xc[..., 0] / z + cx[idx]
+        vv = f[idx] * Xc[..., 1] / z + cy[idx]
+        err[rows] = np.hypot(uu - uv[idx][..., 0], vv - uv[idx][..., 1]).mean(1)
+        X[rows] = Xm
+    return X, err
+
+
+def rig_ba(rec, groups, axis, p0, step, rig, min_track=3, max_obs=20,
+           sample=60000, iters=3, refine_focal=False):
+    """Refine the rig (axis, step, centre, per-camera pose) by alternating
+    point re-triangulation with an LM fit against reprojection error."""
+    from scipy.optimize import least_squares
+
+    gk = sorted(rig.keys())
+    gi = {k: i for i, k in enumerate(gk)}
+    G = len(gk)
+
+    img_g, img_i, img_f, img_c = {}, {}, {}, {}
+    for k in gk:
+        for i, im in enumerate(groups[k]):
+            cam = rec.cameras[im.camera_id]
+            img_g[im.image_id] = gi[k]
+            img_i[im.image_id] = i
+            img_f[im.image_id] = float(cam.params[0])
+            img_c[im.image_id] = np.asarray(cam.params[1:3], float)
+    xy = {im.image_id: np.array([q.xy for q in im.points2D])
+          for im in rec.images.values()}
+
+    offs, cnts, X0 = [], [], []
+    obs_pt, obs_g, obs_i, obs_uv, obs_f, obs_c = [], [], [], [], [], []
+    cur = 0
+    for pt in rec.points3D.values():
+        els = pt.track.elements
+        if len(els) < min_track:
+            continue
+        if len(els) > max_obs:
+            els = els[:max_obs]
+        prow = len(offs)
+        offs.append(cur); cnts.append(len(els)); X0.append(list(pt.xyz))
+        for e in els:
+            iid = e.image_id
+            obs_pt.append(prow); obs_g.append(img_g[iid]); obs_i.append(img_i[iid])
+            obs_uv.append(xy[iid][e.point2D_idx])
+            obs_f.append(img_f[iid]); obs_c.append(img_c[iid])
+        cur += len(els)
+    if not offs:
+        return axis, p0, step, rig, dict(pts=0, reproj0=-1.0, reproj=-1.0)
+    offs = np.array(offs); cnts = np.array(cnts)
+    obs_pt = np.array(obs_pt); obs_g = np.array(obs_g)
+    obs_i = np.array(obs_i, float); obs_uv = np.array(obs_uv)
+    obs_f = np.array(obs_f); obs_c = np.array(obs_c)
+    X = np.array(X0, float)
+    M = len(obs_pt)
+
+    rng = np.random.default_rng(0)
+    sel = rng.choice(M, sample, replace=False) if M > sample else np.arange(M)
+    s_pt, s_g, s_i = obs_pt[sel], obs_g[sel], obs_i[sel]
+    s_uv, s_f, s_c = obs_uv[sel], obs_f[sel], obs_c[sel]
+
+    rc0 = np.array([Rot.from_matrix(rig[k][0]).as_rotvec() for k in gk])
+    cc0 = np.array([rig[k][1] for k in gk])
+
+    def unpack(prm):
+        ax = prm[0:3]; ax = ax / (np.linalg.norm(ax) + 1e-12)
+        p0v = prm[3:6]; st = prm[6]
+        rc = prm[7:7 + 3 * G].reshape(G, 3)
+        cc = prm[7 + 3 * G:7 + 6 * G].reshape(G, 3)
+        fsc = prm[7 + 6 * G:] if refine_focal else np.ones(G)
+        return ax, p0v, st, rc, cc, fsc
+
+    def poses_for(prm, gidx, iidx):
+        ax, p0v, st, rc, cc, fsc = unpack(prm)
+        Ri = Rot.from_rotvec(np.radians(iidx * st)[:, None] * ax[None, :]).as_matrix()
+        Rc = Rot.from_rotvec(rc).as_matrix()[gidx]
+        Rn = np.einsum('mij,mjk->mik', Rc, Ri)
+        Cn = p0v + np.einsum('mji,mj->mi', Ri, cc[gidx] - p0v)
+        return Rn, Cn, fsc
+
+    def resid(prm):
+        Rn, Cn, fsc = poses_for(prm, s_g, s_i)
+        Xc = np.einsum('mij,mj->mi', Rn, X[s_pt] - Cn)
+        z = np.where(np.abs(Xc[:, 2]) < 1e-9, 1e-9, Xc[:, 2])
+        fe = s_f * fsc[s_g]
+        u = fe * Xc[:, 0] / z + s_c[:, 0]
+        v = fe * Xc[:, 1] / z + s_c[:, 1]
+        return np.concatenate([u - s_uv[:, 0], v - s_uv[:, 1]])
+
+    prm = np.concatenate([axis / np.linalg.norm(axis), p0, [step],
+                          rc0.ravel(), cc0.ravel()])
+    if refine_focal:
+        prm = np.concatenate([prm, np.ones(G)])
+
+    reproj0 = float(np.abs(resid(prm)).mean())
+    for _ in range(iters):
+        Rn, Cn, fsc = poses_for(prm, obs_g, obs_i)
+        fe = obs_f * fsc[obs_g]
+        X, _ = _triangulate_batched(Rn, Cn, fe, obs_c[:, 0], obs_c[:, 1],
+                                    obs_uv, offs, cnts)
+        prm = least_squares(resid, prm, method='lm', max_nfev=200).x
+    reproj = float(np.abs(resid(prm)).mean())
+
+    ax, p0v, st, rc, cc, fsc = unpack(prm)
+    rig_out = {k: (Rot.from_rotvec(rc[gi[k]]).as_matrix(), cc[gi[k]]) for k in gk}
+    stats = dict(pts=len(offs), reproj0=reproj0, reproj=reproj,
+                 step0=float(step), step=float(st))
+    return ax, p0v, float(st), rig_out, stats
 
 
 def main():
@@ -106,6 +329,17 @@ def main():
     p.add_argument("--step_deg", type=float, default=None,
                    help="Override the turntable angular step in degrees")
     p.add_argument("--max_image_size", type=int, default=2400)
+    p.add_argument("--retriangulate", choices=["auto", "tracks", "sift"], default="auto",
+                   help="Point source: reuse input tracks ('tracks'), re-run masked "
+                        "SIFT ('sift'), or auto-pick by input track length ('auto')")
+    p.add_argument("--max_reproj", type=float, default=None,
+                   help="Max mean reprojection error (px) to keep a track; "
+                        "default adapts to 2.5x the median")
+    p.add_argument("--rig_ba", choices=["auto", "on", "off"], default="auto",
+                   help="Rig-constrained bundle adjustment before re-triangulation; "
+                        "'auto'/'on' enable it, 'off' skips it for ablation")
+    p.add_argument("--rig_ba_iters", type=int, default=3,
+                   help="Resection-intersection rounds for rig BA")
     args = p.parse_args()
 
     t_start = time.time()
@@ -128,15 +362,49 @@ def main():
     step = args.step_deg if args.step_deg is not None else step_meas
     candidates = [step] if args.step_deg is not None else [step, -step]
 
-    # the measured step sign is ambiguous; keep whichever fits the input centers best
-    poses = best = None
+    # step sign is ambiguous; keep whichever fits the input centers best
+    poses = best = rig = None
     for s in candidates:
-        ps, dc, dr = fit_rig_poses(groups, axis, p0, s)
+        ps, dc, dr, rg = fit_rig_poses(groups, axis, p0, s)
         if best is None or dc < best[0]:
-            best, poses, step = (dc, dr), ps, s
+            best, poses, step, rig = (dc, dr), ps, s, rg
     dc, dr = best
     logger.info("Rig axis %s, step %.3f deg; analytic vs input: dC %.4f, dR %.3f deg",
                 np.round(axis, 4), step, dc, dr)
+
+    # reuse dense tracks if present, else fall back to masked SIFT
+    in_track = np.mean([pt.track.length() for pt in rec.points3D.values()]) \
+        if rec.num_points3D() else 0.0
+    mode = args.retriangulate
+    if mode == "auto":
+        mode = "tracks" if in_track >= 3.0 else "sift"
+    logger.info("Input mean track length %.1f -> retriangulation mode: %s", in_track, mode)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
+    if not (out_dir / "images").exists():
+        os.symlink(images_dir, out_dir / "images")
+
+    if mode == "tracks":
+        out_sparse = str(out_dir / "sparse" / "0")
+        if use_masks and not (out_dir / "masks").exists():
+            os.symlink(masks_dir, out_dir / "masks")
+
+        do_ba = args.rig_ba != "off"
+        if do_ba:
+            axis, p0, step, rig, bs = rig_ba(rec, groups, axis, p0, step, rig,
+                                             iters=args.rig_ba_iters)
+            poses = rig_poses(groups, axis, p0, step, rig)
+            logger.info("Rig BA: %d pts, step %.3f->%.3f deg, reproj %.2f->%.2f px",
+                        bs["pts"], bs["step0"], bs["step"], bs["reproj0"], bs["reproj"])
+
+        stats = apply_track_preserving(rec, poses, args.camera_regex,
+                                       max_reproj=args.max_reproj)
+        rec.write(out_sparse)
+        logger.info("Track-preserving: %d points, mean track %.1f, reproj %.2f px (thr %.1f)",
+                    stats["pts"], stats["track"], stats["reproj"], stats["thr"])
+        logger.info("Done in %.1fs -> %s", time.time() - t_start, out_dir)
+        return
 
     foc = defaultdict(list)
     W = H = None
