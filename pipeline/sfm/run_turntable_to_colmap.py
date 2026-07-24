@@ -400,6 +400,14 @@ def main():
 
         stats = apply_track_preserving(rec, poses, args.camera_regex,
                                        max_reproj=args.max_reproj)
+    
+        for cid, cam in list(rec.cameras.items()):
+            if "SIMPLE_PINHOLE" not in str(cam.model):
+                f, cx, cy = cam.params[0], cam.params[1], cam.params[2]
+                new = pycolmap.Camera.create(cid, "SIMPLE_PINHOLE", float(f),
+                                             cam.width, cam.height)
+                new.params = [float(f), float(cx), float(cy)]
+                rec.cameras[cid] = new
         rec.write(out_sparse)
         logger.info("Track-preserving: %d points, mean track %.1f, reproj %.2f px (thr %.1f)",
                     stats["pts"], stats["track"], stats["reproj"], stats["thr"])

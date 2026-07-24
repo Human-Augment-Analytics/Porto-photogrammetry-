@@ -122,6 +122,7 @@ augenblick/
 │   ├── sfm/                   #   Structure-from-Motion scripts
 │   │   ├── run_vggt_to_colmap.py
 │   │   ├── run_turntable_to_colmap.py
+│   │   ├── run_masked_colmap.py
 │   │   └── run_colmap.sh
 │   └── reconstruction/        #   Surface reconstruction scripts
 │       ├── run_sugar.py
@@ -219,6 +220,13 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 bash pipeline/sfm/run_colmap.sh \
     --input_dir /path/to/scene/ \
     --output_dir /output/colmap/
+
+# Masked COLMAP (SIFT restricted to the object masks)
+# Same incremental SfM as above, but features are only extracted inside masks/,
+# so background clutter does not pollute the reconstruction.
+python pipeline/sfm/run_masked_colmap.py \
+    --input_dir /path/to/scene/ \
+    --output_dir /output/colmap_masked/
 
 # Turntable rig refinement (object on a turntable, static cameras)
 # Takes an existing COLMAP scene and re-solves poses on exact circular orbits.
