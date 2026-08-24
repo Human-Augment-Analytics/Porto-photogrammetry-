@@ -13,6 +13,7 @@ Modern photogrammetry pipelines are two-stage: an SfM method first estimates cam
 | COLMAP | Classical incremental SfM with SIFT features and bundle adjustment |
 | VGGT | Feed-forward transformer that regresses camera parameters and a point map in a single pass |
 | VGGT + BA | VGGT output refined by VGGSfM tracking and bundle adjustment |
+| Turntable | Refines an existing SfM scene with an exact turntable rig prior (fixed axis, constant step) |
 
 **Stage 2 – Gaussian Mesh Extraction:**
 
@@ -38,17 +39,36 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 
 ### Setup
 
+Clone the repository and create the environment:
+
 ```bash
 git clone --recursive <repository-url> porto-photogrammetry
 cd porto-photogrammetry
-
-# Create conda environment
 conda create --name augenblick python=3.10
 conda activate augenblick
-
-# Initialise submodules (SuGaR, LightGlue, PyTorch3D)
 git submodule update --init --recursive
+```
 
+Then install the pipeline. **Recommended — automated per-GPU setup**, which sets the CUDA
+architecture, toolkit, and PyTorch wheel for your GPU:
+
+```bash
+bash scripts/auto_setup.sh      # detect the GPU and dispatch to the right wrapper
+# ...or select explicitly:
+bash scripts/setup_l40s.sh      # L40S  (sm 8.9,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_a100.sh      # A100  (sm 8.0,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_h100.sh      # H100  (sm 9.0,  CUDA 12.1 / torch 2.3.1)
+bash scripts/setup_b200.sh      # B200  (sm 10.0, CUDA 12.8 / torch 2.9.1)
+```
+
+Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the
+Gaussian Wrapping CGAL build.
+
+#### Manual setup
+
+For unsupported GPUs or debugging, the scripts above wrap these steps:
+
+```bash
 # Install Python dependencies
 python -m pip install -r requirements.txt
 
@@ -101,6 +121,8 @@ augenblick/
 │   │   └── prepare_uf_dataset.py
 │   ├── sfm/                   #   Structure-from-Motion scripts
 │   │   ├── run_vggt_to_colmap.py
+│   │   ├── run_turntable_to_colmap.py
+│   │   ├── run_masked_colmap.py
 │   │   └── run_colmap.sh
 │   └── reconstruction/        #   Surface reconstruction scripts
 │       ├── run_sugar.py
@@ -198,6 +220,20 @@ python pipeline/sfm/run_vggt_to_colmap.py \
 bash pipeline/sfm/run_colmap.sh \
     --input_dir /path/to/scene/ \
     --output_dir /output/colmap/
+
+# Masked COLMAP (SIFT restricted to the object masks)
+# Same incremental SfM as above, but features are only extracted inside masks/,
+# so background clutter does not pollute the reconstruction.
+python pipeline/sfm/run_masked_colmap.py \
+    --input_dir /path/to/scene/ \
+    --output_dir /output/colmap_masked/
+
+# Turntable rig refinement (object on a turntable, static cameras)
+# Takes an existing COLMAP scene and re-solves poses on exact circular orbits.
+python pipeline/sfm/run_turntable_to_colmap.py \
+    --input_dir /output/vggt_ba/ \
+    --output_dir /output/turntable/ \
+    --use_masks
 ```
 
 ### Step 2: Surface Reconstruction
