@@ -159,7 +159,10 @@ augenblick/
 │   │   └── submodules/        #   CUDA rasterizers + tetra triangulation
 │   ├── light_glue/            # LightGlue (submodule)
 │   └── pytorch3d/             # PyTorch3D (submodule)
-└── CLAUDE.md                  # Detailed codebase documentation
+├── scripts/                   # Per-GPU environment installers
+└── .claude/
+    ├── CLAUDE.md              # Agent orientation (succinct)
+    └── MEMORY/                # Detailed codebase documentation
 ```
 
 ## Input Requirements
