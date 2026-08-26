@@ -59,6 +59,7 @@ bash scripts/setup_l40s.sh      # L40S  (sm 8.9,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_a100.sh      # A100  (sm 8.0,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_h100.sh      # H100  (sm 9.0,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_b200.sh      # B200  (sm 10.0, CUDA 12.8 / torch 2.9.1)
+bash scripts/setup_rtx_pro_6000.sh  # RTX Pro 6000 Blackwell (sm 12.0, CUDA 12.8 / torch 2.9.1)
 ```
 
 Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the

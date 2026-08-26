@@ -18,14 +18,15 @@ case "$CAP" in
     8.0)  TARGET="setup_a100.sh" ;;   # A100 (40 or 80 GB)
     9.0)  TARGET="setup_h100.sh" ;;   # H100 / H200
     10.0) TARGET="setup_b200.sh" ;;   # B200
+    12.0) TARGET="setup_rtx_pro_6000.sh" ;;   # RTX Pro 6000 Blackwell
     *)
         cat <<EOF
 No dedicated wrapper for compute capability '$CAP'.
-Supported out of the box: 8.0 (A100), 8.9 (L40S), 9.0 (H100/H200), 10.0 (B200).
+Supported out of the box: 8.0 (A100), 8.9 (L40S), 9.0 (H100/H200), 10.0 (B200), 12.0 (RTX Pro 6000 Blackwell).
 
 To set up this GPU, copy one of scripts/setup_<gpu>.sh and set:
   GPU_ARCH=$CAP   plus a matching CUDA_MODULE / TORCH_SPEC / TORCH_INDEX_URL.
-Quick references: A40=8.6, V100=7.0, RTX-Pro-Blackwell=12.0.
+Quick references: A40=8.6, V100=7.0.
 Or run setup_common.sh directly with those variables exported.
 EOF
         exit 2

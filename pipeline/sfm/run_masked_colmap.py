@@ -43,15 +43,15 @@ def main():
     ro = pycolmap.ImageReaderOptions()
     if mask_path:
         ro.mask_path = mask_path
-    so = pycolmap.SiftExtractionOptions()
-    so.max_image_size = args.max_image_size
-    so.num_threads = 8
+    ro.camera_model = args.camera_model
+    eo = pycolmap.FeatureExtractionOptions()
+    eo.max_image_size = args.max_image_size
+    eo.num_threads = 8
 
     t = time.time()
     pycolmap.extract_features(db_path, str(out_dir / "images"),
                               camera_mode=pycolmap.CameraMode.PER_IMAGE,
-                              camera_model=args.camera_model,
-                              reader_options=ro, sift_options=so)
+                              reader_options=ro, extraction_options=eo)
     print(f"[colmap] extraction {time.time()-t:.0f}s", flush=True)
 
     t = time.time()

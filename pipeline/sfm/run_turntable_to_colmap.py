@@ -446,14 +446,15 @@ def main():
     ro = pycolmap.ImageReaderOptions()
     if mask_path:
         ro.mask_path = mask_path
-    so = pycolmap.SiftExtractionOptions()
-    so.max_image_size = args.max_image_size
-    so.num_threads = 8
+    ro.camera_model = "SIMPLE_PINHOLE"
+    eo = pycolmap.FeatureExtractionOptions()
+    eo.max_image_size = args.max_image_size
+    eo.num_threads = 8
 
     t0 = time.time()
     pycolmap.extract_features(db_path, str(out_dir / "images"),
                               camera_mode=pycolmap.CameraMode.PER_IMAGE,
-                              camera_model="SIMPLE_PINHOLE", reader_options=ro, sift_options=so)
+                              reader_options=ro, extraction_options=eo)
     logger.info("SIFT extraction %.0fs", time.time() - t0)
     t0 = time.time()
     pycolmap.match_exhaustive(db_path)

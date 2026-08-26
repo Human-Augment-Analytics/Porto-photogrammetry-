@@ -6,6 +6,9 @@ Handles data with the naming convention:
   - Images: camera3_camera 3_IMG_7477.JPG
   - Masks:  camera3_camera 3_IMG_7477.jpg.mask.png
 
+Masks whose '.<ext>.mask' suffix repeats (e.g. camera1_IMG_3009.jpg.mask.jpg.mask.png)
+are handled too: every layer is stripped to recover the image base name.
+
 Output structure:
   output_dir/
     images/
@@ -51,31 +54,41 @@ def find_images_and_masks(input_dir: Path) -> Tuple[List[Path], List[Path]]:
 def get_mask_base_name(mask_path: Path) -> str:
     """
     Extract base name from mask file.
-    
+
+    Some exports stack the '.<ext>.mask' suffix more than once, so strip it
+    repeatedly until nothing is left to remove.
+
     Examples:
       'camera3_camera 3_IMG_7477.jpg.mask.png' -> 'camera3_camera 3_IMG_7477'
       'camera3_camera 3_IMG_7477.JPG.mask.png' -> 'camera3_camera 3_IMG_7477'
+      'camera1_IMG_3009.jpg.mask.jpg.mask.png' -> 'camera1_IMG_3009'
     """
     name = mask_path.name
-    
-    # Handle various mask naming patterns
-    # Pattern: basename.jpg.mask.png or basename.JPG.mask.png
+
+    # Drop the trailing '.png' of the mask file itself, then peel off every
+    # '.<ext>.mask' / '.mask' layer left behind by repeated mask exports.
+    if name.lower().endswith('.png'):
+        name = name[:-4]
+
+    # Pattern: basename.jpg.mask or basename.JPG.mask (also .jpeg/.png), plus a
+    # bare '.mask' fallback for masks with no intermediate extension.
     patterns = [
-        r'(.+)\.[jJ][pP][eE]?[gG]\.mask\.png$',  # .jpg.mask.png or .jpeg.mask.png
-        r'(.+)\.[pP][nN][gG]\.mask\.png$',        # .png.mask.png
-        r'(.+)\.mask\.png$',                       # .mask.png (fallback)
+        r'(.+)\.[jJ][pP][eE]?[gG]\.mask$',  # .jpg.mask or .jpeg.mask
+        r'(.+)\.[pP][nN][gG]\.mask$',        # .png.mask
+        r'(.+)\.mask$',                       # .mask (fallback)
     ]
-    
-    for pattern in patterns:
-        match = re.match(pattern, name)
-        if match:
-            return match.group(1)
-    
-    # Fallback: just remove .mask.png
-    if name.lower().endswith('.mask.png'):
-        return name[:-9]  # Remove '.mask.png'
-    
-    return mask_path.stem
+
+    stripped = True
+    while stripped:
+        stripped = False
+        for pattern in patterns:
+            match = re.match(pattern, name)
+            if match:
+                name = match.group(1)
+                stripped = True
+                break
+
+    return name if name else mask_path.stem
 
 
 def match_images_to_masks(images: List[Path], masks: List[Path]) -> List[Tuple[Path, Path]]:

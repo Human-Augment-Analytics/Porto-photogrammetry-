@@ -21,7 +21,7 @@ pybind11~=2.7.1
 tensorboard
 plyfile
 pymcubes
-pycolmap==3.10.0
+pycolmap-cuda12
 rich
 scikit-image
 dacite
