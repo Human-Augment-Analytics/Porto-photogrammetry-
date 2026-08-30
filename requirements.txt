@@ -25,3 +25,4 @@ pycolmap-cuda12
 rich
 scikit-image
 dacite
+morphosource>=1.2.0

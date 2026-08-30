@@ -11,6 +11,21 @@ When adding documentation: put the detail in the right `MEMORY/` file (or add a 
 index it in CLAUDE.md); add to CLAUDE.md itself only if it changes how someone invokes or
 navigates the repo.
 
+## Code comment and docstring style
+
+Comments are **one line, at most 20 words**, and state only the *purpose* of the code below
+them — never a restatement of what that code does. Delete narrating comments
+(`# Create output directories` above a `mkdir`); keep the ones carrying non-obvious intent:
+
+```python
+# Masks end in .png too, so they must be claimed before the image test.
+if '.mask.png' in file_name.lower():
+```
+
+Docstrings may run to several lines and keep their `Args:` / `Returns:` sections, but stay
+concise and describe purpose rather than walking through behaviour — no worked-example blocks.
+`pipeline/preparation/prepare_uf_dataset.py` is the reference for both rules.
+
 ## Repository layout
 
 ```
