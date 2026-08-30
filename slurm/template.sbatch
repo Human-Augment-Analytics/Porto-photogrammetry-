@@ -6,16 +6,25 @@
 ##SBATCH --partition=hpg-b200          # alternative; pair with GPU=b200
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=32
+#SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
-#SBATCH --mem=128gb
-#SBATCH --time=8:00:00
+#SBATCH --mem=64gb
+#SBATCH --time=4:00:00
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --error=slurm/logs/%x-%j.err
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=srizvi63@gatech.edu
 
-source "$(dirname "$0")/common.sh"
+# Abort on error here too: common.sh's own set -e is moot if sourcing fails.
+set -euo pipefail
+
+# Slurm copies this script to /var/spool, so $0 cannot locate the repo; use the submit dir.
+SLURM_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/slurm"
+if [ ! -f "$SLURM_DIR/common.sh" ]; then
+    echo "ERROR: cannot find common.sh at $SLURM_DIR; submit from the repo root" >&2
+    exit 2
+fi
+source "$SLURM_DIR/common.sh"
 
 SCENE="data/CHANGE_ME"
 OUT="output/CHANGE_ME"
