@@ -13,6 +13,7 @@ below); only add to CLAUDE.md if it changes how the repo is invoked or navigated
 | File | Contents |
 |------|----------|
 | [environment-and-gpu.md](MEMORY/environment-and-gpu.md) | Install via `scripts/`, per-GPU wrappers, numpy/build gotchas, submodules, GPU notes |
+| [data-morphosource.md](MEMORY/data-morphosource.md) | MorphoSource downloader: flags, project 000381689 contents, API gotchas |
 | [pipeline-sfm.md](MEMORY/pipeline-sfm.md) | Data prep + all four SfM entry points with full flags (incl. turntable algorithm) |
 | [pipeline-reconstruction.md](MEMORY/pipeline-reconstruction.md) | The four reconstruction wrappers, their flags, and output paths |
 | [scene-format.md](MEMORY/scene-format.md) | COLMAP scene layout, mask naming, end-to-end data flow |
@@ -32,6 +33,7 @@ question is how different SfM initialisations interact with each mesh extractor.
 
 | Stage | Options |
 |-------|---------|
+| Data acquisition | `scripts/download_morphosource_project.py` (MorphoSource project 000381689) |
 | Data preparation | `pipeline/preparation/prepare_uf_dataset.py` |
 | SfM | `pipeline/sfm/run_vggt_to_colmap.py` (± `--use_ba`), `run_colmap.sh`, `run_masked_colmap.py`, `run_turntable_to_colmap.py` |
 | Reconstruction | `pipeline/reconstruction/run_{sugar,2dgs,pgsr,gw}.py` |
@@ -68,6 +70,8 @@ README) is the install path. Details and knobs (`BACKENDS`, `SKIP_TETRA`, numpy<
   flags to the training step only; its boolean flags use `--no-<flag>` spellings.
 - `run_pgsr.py` flattens `sparse/0/` → `sparse/` because PGSR expects no `0/`.
 - COLMAP IDs are 1-indexed — `+1` offset from VGGT batch indices.
+- `download_morphosource_project.py` defaults to a **seeded 3-specimen sample** (~3.2 GB), not the
+  whole 869 GB project; `--dry-run` costs nothing and needs no API key.
 - `src/pipeline/` is legacy first-generation code; use `pipeline/` for new work.
 - Only `src/light_glue`, `src/pytorch3d`, and `src/gaussian_wrapping/submodules/Depth-Anything-V2`
   are git submodules — `src/sugar` and the other backends are vendored in-tree.
