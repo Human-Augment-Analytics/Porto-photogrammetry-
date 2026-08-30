@@ -161,6 +161,32 @@ derived by reading the pre-refactor wrappers, and asserted on the full list.
 > `pytest` is not part of the pinned environment spec; it was installed into the rtx6000 env
 > (pure-Python, `--no-deps`-safe, does not perturb the numpy/torch pins).
 
+## Port validation (Phase 6 smoke run)
+
+The port was validated end-to-end on `UF_birds_ivory2` (array index 2 — the smallest scene that
+still has masks: 184 images, 184 masks), GPU target `rtx6000`:
+
+| Step | Job ID | State | Elapsed | Result |
+|---|---|---|---|---|
+| VGGT SfM (`slurm/vggt_sfm.sbatch`) | 40649294 | COMPLETED | 2:02 | 184/184 images registered, 100,000 points |
+| 2DGS recon (`slurm/recon.sbatch`, `--iterations 2000`) | 40649370 | COMPLETED | 12:01 | mesh at the predicted path, 263 MB |
+
+Stage timings, useful as the baseline for spotting a future regression:
+
+- VGGT: model load 9.3s, inference 26.0s, total 99.9s.
+- 2DGS: training 152.4s, rendering + TSDF fusion 560.9s, total 713.3s.
+
+> `--iterations 2000` is a **smoke value only**, far below the 30000 default. It proves plumbing,
+> not reconstruction quality — never quote a mesh from this run as a result.
+
+**Proven:** the package imports under the batch env; the CLI parses; the registry resolves;
+`Scene` validation passes on real data; argv reaches the backends correctly; VGGT and 2DGS run to
+completion; `mesh_path()` matches where the backend actually wrote.
+
+**Not proven:** SuGaR, PGSR, and GW have never been run through the package. PGSR's `prepare()`
+scene-flattening and GW's no-`cwd` invocation plus passthrough are the two highest-risk
+unexercised paths. Non-default flags are likewise unexercised.
+
 ## Known follow-up work
 
 - **`.jpg`-hardcoded mask symlinks.** `Scene.link_colmap_masks` builds `<stem>.jpg.png`, so a
