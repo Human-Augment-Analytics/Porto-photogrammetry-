@@ -24,6 +24,7 @@ below); only add to CLAUDE.md if it changes how the repo is invoked or navigated
 | [backend-gaussian-wrapping.md](MEMORY/backend-gaussian-wrapping.md) | GW three stages, components, CUDA submodule matrix |
 | [baseline-meshroom.md](MEMORY/baseline-meshroom.md) | Meshroom wrapper + reference runtimes |
 | [repo-conventions.md](MEMORY/repo-conventions.md) | Doc rule, repo layout, legacy code, ID/naming and commit conventions |
+| [cluster-slurm.md](MEMORY/cluster-slurm.md) | SLURM job scripts, partitions/accounts, GPU switch, batch-env gotchas |
 
 ## Project overview
 

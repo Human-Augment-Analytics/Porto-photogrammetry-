@@ -159,3 +159,6 @@ skyseg.onnx
 
 miniconda.sh
 *.ufhpc.*
+
+# SLURM job logs
+slurm/logs/
