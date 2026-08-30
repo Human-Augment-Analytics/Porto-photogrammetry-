@@ -2,35 +2,21 @@
 """
 Download openly-downloadable media for a MorphoSource project.
 
-Defaults to project 000381689 ("UF Photogrammetry scans at the Florida Museum of Natural
-History"), the source of the UF datasets that pipeline/preparation/prepare_uf_dataset.py
-consumes. Every open medium in that project is one of three kinds:
+Defaults to project 000381689 ("UF Photogrammetry scans at the Florida Museum of
+Natural History"), the source of the UF scenes that
+pipeline/preparation/prepare_uf_dataset.py consumes. Media come in three kinds:
+images (a Photogrammetry Image Series), highpoly meshes and lowpoly meshes.
 
-  images    Photogrammetry Image Series -- <specimen>_images.zip, holding cameraN/*.jpg
-            plus the matching *.jpg.mask.png masks
-  highpoly  High polygon mesh           -- <specimen>_mesh_highpoly.zip
-  lowpoly   Low / edited low poly mesh  -- <specimen>_mesh_lowpoly.zip
+Downloading needs MORPHOSOURCE_API_KEY and implies consent to the MorphoSource
+user agreements: https://www.morphosource.org/terms
 
-The full project is ~869 GB, so by default this samples 3 specimens (seeded, reproducible)
-and pulls their image series + high poly mesh. Use --all-specimens or --specimen to widen.
+Output:
+  output_dir/manifest.json
+  output_dir/<specimen>__<id>/metadata.json
+  output_dir/<specimen>__<id>/<specimen>_images.zip   without --extract
+  output_dir/<specimen>__<id>/<specimen>_images/     with --extract, zip removed
 
-Requires a MorphoSource API key in MORPHOSOURCE_API_KEY (not needed for --dry-run).
-By downloading you consent to the MorphoSource user agreements for those files:
-https://www.morphosource.org/terms
-
-Each download is a bundle: a zip holding "Media <id> - <title>/<name>-<id>.zip" -- the actual
-payload -- plus the usage agreement PDF and media manifests. --extract unwraps both layers.
-
-Output structure:
-  output_dir/
-    manifest.json
-    UF_Herp_84293__000833233/
-      metadata.json
-      UF_Herp_84293_images.zip
-      UF_Herp_84293_mesh_highpoly.zip
-      UF_Herp_84293_images/          # only with --extract
-        camera1/camera1_IMG_8717.JPG
-        camera1/camera1_IMG_8717.jpg.mask.png
+API quirks behind this script are documented in .claude/MEMORY/data-morphosource.md.
 """
 import os
 import json
@@ -49,9 +35,7 @@ import requests
 
 from morphosource import DownloadConfig, DownloadVisibility
 from morphosource.exceptions import RestrictedDownloadError, ItemNotFound, MetadataMissingError
-# fetch_items / Endpoints / Media are internal to morphosource (>=1.2.0) but are the only way to
-# filter by project: the public search_media() exposes no project parameter, while the REST API
-# does have a 'project' facet keyed by project id.
+# search_media() takes no project filter, so reach for the internals that do.
 from morphosource.fetch import fetch_items
 from morphosource.config import API_URL, Endpoints
 from morphosource.search import Media
@@ -72,13 +56,13 @@ DEFAULT_USE_STATEMENT = (
 
 
 def first(media_data: dict, name: str, default=None):
-    """MorphoSource wraps every field in a list; pull the first value out."""
+    """Unwrap a MorphoSource field, since the API wraps every value in a list."""
     values = media_data.get(name) or []
     return values[0] if values else default
 
 
 def sanitize(name: str) -> str:
-    """'UF:Herp:84293' -> 'UF_Herp_84293'. Safe as a single path component."""
+    """Reduce a title to a name safe as one path component."""
     cleaned = "".join("_" if c in ':/\\ \t' else c for c in (name or "").strip())
     cleaned = "".join(c for c in cleaned if c.isalnum() or c in "_-.")
     while "__" in cleaned:
@@ -87,6 +71,7 @@ def sanitize(name: str) -> str:
 
 
 def human_size(num_bytes: int) -> str:
+    """Format a byte count for logging."""
     size = float(num_bytes or 0)
     for unit in ("B", "KB", "MB", "GB", "TB"):
         if size < 1024 or unit == "TB":
@@ -97,7 +82,7 @@ def human_size(num_bytes: int) -> str:
 # --- MorphoSource queries -----------------------------------------------------------------
 
 def get_project_title(project_id: str) -> Optional[str]:
-    """Project metadata has no helper in the package; hit /api/projects/<id> directly."""
+    """Fetch a project's title, which the package offers no helper for."""
     try:
         response = requests.get(f"{API_URL}/projects/{project_id}", timeout=30)
         response.raise_for_status()
@@ -108,7 +93,7 @@ def get_project_title(project_id: str) -> Optional[str]:
 
 
 def search_project_media(project_id: str) -> List[Media]:
-    """All openly-downloadable media in a project, across every result page."""
+    """Fetch every openly-downloadable medium in a project, across all result pages."""
     params = {
         "f.project": project_id,
         "f.publication_status": DownloadVisibility.OPEN,
@@ -118,8 +103,8 @@ def search_project_media(project_id: str) -> List[Media]:
         per_page=100, page=None, items_name="media",
     )
     logger.info(f"MorphoSource reports {pages.get('total_count')} open media in project {project_id}")
-    # The facet filter is server-side; re-assert it here. Note the media field spells open
-    # download as 'open', while the facet value is 'Open Download'.
+
+    # Re-assert visibility here: the media field says 'open', the facet 'Open Download'.
     return [Media(item) for item in raw_items if first(item, "visibility") == "open"]
 
 
@@ -127,12 +112,17 @@ _file_name_cache: Dict[str, Optional[str]] = {}
 
 
 def get_remote_file_name(media: Media) -> Optional[str]:
-    """Real file name, e.g. UF_Herp_84293_mesh_highpoly.zip.
+    """
+    Look up a medium's real file name, caching and retrying the request.
 
-    Search results carry an empty file_name for nearly every medium in this project, so this
-    costs one extra request per medium; results are cached. MorphoSource rate-limits bursts of
-    these lookups with an HTTP error, so back off and retry rather than treating that as
-    "no metadata".
+    Search results omit file_name for nearly every medium in this project, and
+    MorphoSource answers bursts of these lookups with an HTTP error.
+
+    Args:
+        media: Medium to name.
+
+    Returns:
+        The file name, or None when the API will not supply one.
     """
     if media.id in _file_name_cache:
         return _file_name_cache[media.id]
@@ -156,7 +146,7 @@ def get_remote_file_name(media: Media) -> Optional[str]:
 
 
 def prefetch_file_names(media_list: List[Media]) -> None:
-    """Warm the file-name cache. A few workers speed this up without tripping the rate limit."""
+    """Warm the file-name cache with a few workers, staying under the rate limit."""
     with ThreadPoolExecutor(max_workers=METADATA_WORKERS) as pool:
         list(pool.map(get_remote_file_name, media_list))
 
@@ -164,6 +154,7 @@ def prefetch_file_names(media_list: List[Media]) -> None:
 # --- Kind classification ------------------------------------------------------------------
 
 def kind_from_text(text: Optional[str]) -> Optional[str]:
+    """Read a mesh kind out of a description or file name."""
     if not text:
         return None
     text = text.lower()
@@ -175,15 +166,17 @@ def kind_from_text(text: Optional[str]) -> Optional[str]:
 
 
 def classify_media(media_list: List[Media]) -> Dict[str, str]:
-    """Map media id -> one of KINDS (or 'unknown'), using only the search response.
+    """
+    Sort media into kinds using only the search response.
 
-      1. media_type identifies the image series outright.
-      2. short_description says "High polygon mesh" / "Low polygon mesh" for most meshes.
+    Stays network-free because this decides which specimens are eligible, and so
+    which ones a given --seed samples; refine_kinds() resolves the remainder later.
 
-    Deliberately network-free: this classification decides which specimens are eligible, and so
-    which ones a given --seed samples. Deriving it from a flaky per-medium HTTP lookup would
-    make the same seed pick different specimens on different runs. refine_kinds() resolves what
-    is left, after the sample is fixed.
+    Args:
+        media_list: Open media for the project.
+
+    Returns:
+        Mapping of media id to 'images', 'lowpoly', 'highpoly' or 'unknown'.
     """
     kinds: Dict[str, str] = {}
     for media in media_list:
@@ -198,10 +191,15 @@ def classify_media(media_list: List[Media]) -> Dict[str, str]:
 
 
 def refine_kinds(media_list: List[Media], kinds: Dict[str, str]) -> None:
-    """Resolve 'unknown' media in-place, for a small set of already-selected specimens.
+    """
+    Resolve 'unknown' kinds in place, for an already-selected set of specimens.
 
-      3. the real file name (_mesh_highpoly.zip / _mesh_lowpoly.zip) names the kind;
-      4. failing that, of two sibling meshes under one image series the bigger is the high poly.
+    Falls back from the real file name to size-ranking two sibling meshes, of which
+    the larger is the high poly one.
+
+    Args:
+        media_list: Media belonging to the selected specimens.
+        kinds: Mapping from classify_media(), updated in place.
     """
     unresolved = [m for m in media_list if kinds[m.id] == "unknown"]
     if not unresolved:
@@ -225,7 +223,7 @@ def refine_kinds(media_list: List[Media], kinds: Dict[str, str]) -> None:
 # --- Selection ----------------------------------------------------------------------------
 
 def group_by_specimen(media_list: List[Media], kinds: Dict[str, str]) -> Dict[str, Dict[str, List[Media]]]:
-    """specimen id -> kind -> media."""
+    """Index media by specimen id and then by kind."""
     specimens: Dict[str, Dict[str, List[Media]]] = {}
     for media in media_list:
         specimen_id = media.physical_object_id
@@ -238,7 +236,20 @@ def group_by_specimen(media_list: List[Media], kinds: Dict[str, str]) -> Dict[st
 def select_specimens(specimens: Dict[str, Dict[str, List[Media]]], wanted_kinds: List[str],
                      explicit: Optional[List[str]], take_all: bool,
                      count: int, seed: int) -> List[str]:
-    """Specimens that carry every requested kind, then sampled down."""
+    """
+    Choose the specimens to download, from those carrying every requested kind.
+
+    Args:
+        specimens: Output of group_by_specimen().
+        wanted_kinds: Kinds a specimen must all have to be eligible.
+        explicit: Specimen ids to use instead of sampling, or None.
+        take_all: Take every eligible specimen rather than sampling.
+        count: Sample size.
+        seed: Seed for that sample.
+
+    Returns:
+        Selected specimen ids.
+    """
     eligible = sorted(
         specimen_id for specimen_id, by_kind in specimens.items()
         if all(by_kind.get(kind) for kind in wanted_kinds)
@@ -259,14 +270,15 @@ def select_specimens(specimens: Dict[str, Dict[str, List[Media]]], wanted_kinds:
         return eligible
     if count >= len(eligible):
         return eligible
-    # Sample from the sorted list so a given seed always picks the same specimens, whatever
-    # order the API happened to return them in.
+
+    # Sample the sorted list so a seed picks the same specimens whatever order the API returned.
     return sorted(random.Random(seed).sample(eligible, count))
 
 
 # --- Download -----------------------------------------------------------------------------
 
 def target_file_name(media: Media, kind: str, used: set) -> str:
+    """Name a medium's file on disk, keeping it unique within its specimen."""
     name = get_remote_file_name(media) or f"{media.id}_{kind}.zip"
     name = sanitize(name)
     if name in used:
@@ -287,12 +299,12 @@ def safe_extract(zip_path: Path, dest: Path) -> None:
 
 
 def extract_bundle(zip_path: Path) -> None:
-    """Unzip beside the archive, unwrapping MorphoSource's bundle layer.
+    """
+    Unzip beside the archive, then delete every zip involved.
 
-    A download is not the media file itself: it is a bundle holding
-    "Media <id> - <title>/<name>-<id>.zip" alongside the usage agreement PDF and the media
-    manifests. Only that inner zip has the cameraN/*.JPG + *.jpg.mask.png payload, so extract
-    it too and drop it afterwards rather than keeping a second copy of a gigabyte.
+    A download wraps the real payload in an outer zip alongside the usage agreement
+    and the manifests, so both zips are extracted and then dropped rather than left
+    as a second copy of the data.
     """
     dest = zip_path.with_suffix("")
     safe_extract(zip_path, dest)
@@ -307,23 +319,44 @@ def extract_bundle(zip_path: Path) -> None:
         if directory.is_dir() and not any(directory.iterdir()):
             directory.rmdir()
 
-    logger.info(f"  extracted -> {dest}")
+    zip_path.unlink()
+    logger.info(f"  extracted -> {dest} (removed {zip_path.name})")
 
 
 def download_media(media: Media, kind: str, path: Path, download_config: DownloadConfig,
                    overwrite: bool, extract: bool) -> bool:
+    """
+    Fetch one medium's bundle, skipping any complete copy already on disk.
+
+    Args:
+        media: Medium to download.
+        kind: Its kind, for logging.
+        path: Destination zip.
+        download_config: Credentials and use statement.
+        overwrite: Re-download even when a complete copy is present.
+        extract: Unwrap the bundle afterwards and delete the zip.
+
+    Returns:
+        True when the file ends up in place.
+    """
     expected_size = first(media.data, "file_size_all", 0) or 0
-    if path.exists() and not overwrite:
-        # Completeness is checked by reading the zip's central directory, not by size:
-        # MorphoSource re-packs each download (payload plus usage agreement and manifests), so
-        # the bundle never weighs exactly the file_size_all the API advertises. A half-written
-        # file cannot sit here anyway - downloads land on <name>.part and are renamed on success.
-        if zipfile.is_zipfile(path):
+    extracted = path.with_suffix("")
+
+    if not overwrite:
+
+        # With --extract no zip survives, so the unpacked directory is the receipt.
+        if extract and extracted.is_dir():
+            logger.info(f"  {extracted.name} already extracted, skipping")
+            return True
+
+        # Read the central directory: re-packed bundles never match the advertised size.
+        if path.exists() and zipfile.is_zipfile(path):
             logger.info(f"  {path.name} already present ({human_size(path.stat().st_size)}), skipping")
-            if extract and not path.with_suffix("").exists():
+            if extract:
                 extract_bundle(path)
             return True
-        logger.info(f"  {path.name} exists but is not a readable zip, re-downloading")
+        if path.exists():
+            logger.info(f"  {path.name} exists but is not a readable zip, re-downloading")
 
     partial = path.with_name(path.name + ".part")
     logger.info(f"  downloading {media.id} [{kind}] -> {path.name} ({human_size(expected_size)})")
@@ -353,6 +386,7 @@ def download_media(media: Media, kind: str, path: Path, download_config: Downloa
 # --- Main ---------------------------------------------------------------------------------
 
 def build_row(media: Media, kind: str, file_name: Optional[str]) -> dict:
+    """Describe one medium for the manifest."""
     return {
         "media_id": media.id,
         "kind": kind,
@@ -410,7 +444,7 @@ Examples:
     parser.add_argument("--dry-run", action="store_true",
                         help="Write the manifest and print sizes, download nothing")
     parser.add_argument("--extract", action="store_true",
-                        help="Unzip each downloaded bundle beside itself")
+                        help="Unzip each bundle beside itself and delete the zip")
     parser.add_argument("--overwrite", action="store_true",
                         help="Re-download even when a complete file is already present")
     parser.add_argument("--use-statement", default=DEFAULT_USE_STATEMENT,

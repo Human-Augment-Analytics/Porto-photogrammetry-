@@ -64,9 +64,9 @@ data/morphosource/000381689/
   manifest.json                        # project, selection args (incl. seed), every planned file
   UF_Fish_233247__000811670/           # sanitised physical_object_title + "__" + object id
     metadata.json                      # this specimen's slice of the manifest
-    UF_Fish_233247_images.zip
+    UF_Fish_233247_images.zip          # without --extract
     UF_Fish_233247_mesh_highpoly.zip
-    UF_Fish_233247_images/             # only with --extract
+    UF_Fish_233247_images/             # with --extract; the zip is deleted
       camera1/camera1_IMG_8717.JPG
       camera1/camera1_IMG_8717.jpg.mask.png
       ms_usage_std_comm_no_rearc_ms_3d_limited.pdf
@@ -75,9 +75,9 @@ data/morphosource/000381689/
 
 **A download is a bundle, not the media file.** Each zip contains
 `Media <id> - <title>/<name>-<id>.zip` — the actual payload — plus the usage agreement PDF and
-the media manifests. `--extract` unwraps both layers and deletes the inner zip, so the payload
-lands directly under `<name>_images/` (a plain `unzip` leaves you one level short, holding a
-gigabyte-sized inner zip).
+the media manifests. `--extract` unwraps both layers and deletes **both** zips, so the payload
+lands directly under `<name>_images/` and no second copy of the data is left behind (a plain
+`unzip` leaves you one level short, holding a gigabyte-sized inner zip).
 
 Meshes unwrap to `object_full.obj` + `.mtl` + `object_full_diffuse.1001.png`; image series
 unwrap to `cameraN/` dirs — exactly the mixed image+mask layout `prepare_uf_dataset.py` parses
@@ -93,9 +93,13 @@ python pipeline/preparation/prepare_uf_dataset.py \
 
 Downloads are atomic (`.zip.part` → `os.replace`) and validated with `zipfile.is_zipfile`, so an
 interrupted pull resumes by simply re-running: a re-run skips any file that already reads as a
-complete zip. Note it cannot skip on size — MorphoSource re-packs each bundle, so what lands on
+complete zip, and under `--extract` — where no zip survives — the unpacked directory is what marks
+a medium as done. Note it cannot skip on size: MorphoSource re-packs each bundle, so what lands on
 disk never matches the `file_size_all` the API advertises. Extraction rejects zip members with
 absolute or `..` paths.
+
+Because `--extract` and plain mode leave different receipts, re-running *without* `--extract` over
+an already-extracted specimen re-downloads its zips — ask for the form you want and stay with it.
 
 ## MorphoSource API gotchas
 
