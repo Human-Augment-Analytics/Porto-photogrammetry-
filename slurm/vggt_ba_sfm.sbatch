@@ -58,4 +58,4 @@ echo "scene      : $SCENE_NAME ($IDX of ${#SCENES[@]}) -> $OUT"
 python pipeline/sfm/run_vggt_to_colmap.py \
     --input_dir  "$SCENE" \
     --output_dir "$OUT" \
-    "$@"
+    --use_ba "$@"

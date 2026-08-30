@@ -9,7 +9,7 @@ GPU="${GPU:-rtx6000}"
 # Arch strings mirror the GPU_ARCH each scripts/setup_<gpu>.sh exports.
 case "$GPU" in
     rtx6000)
-        CONDA_ENV="$CONDA_ROOT/augenblick_rtx_6000"
+        CONDA_ENV="$CONDA_ROOT/augenblick_rtx_pro_6000"
         CUDA_MODULE="cuda/13.0.2"
         GPU_ARCH="12.0"
         ;;
