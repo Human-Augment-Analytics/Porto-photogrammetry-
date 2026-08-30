@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Prepare dataset by separating mixed images and masks into separate folders.
+Separate a specimen's mixed images and masks into a COLMAP-ready scene.
 
-Handles data with the naming convention:
-  - Images: camera3_camera 3_IMG_7477.JPG
-  - Masks:  camera3_camera 3_IMG_7477.jpg.mask.png
+Walks the input directory, so one run over a specimen's image bundle gathers
+every camera into a single output scene.
 
-Masks whose '.<ext>.mask' suffix repeats (e.g. camera1_IMG_3009.jpg.mask.jpg.mask.png)
-are handled too: every layer is stripped to recover the image base name.
+Naming convention:
+  Images: camera3_camera 3_IMG_7477.JPG
+  Masks:  camera3_camera 3_IMG_7477.jpg.mask.png  ('.<ext>.mask' may repeat)
 
-Output structure:
-  output_dir/
-    images/
-      camera3_camera 3_IMG_7477.jpg
-    masks/
-      camera3_camera 3_IMG_7477.png
+Output:
+  output_dir/images/camera3_camera 3_IMG_7477.jpg
+  output_dir/masks/camera3_camera 3_IMG_7477.png
 """
 import re
 import os
@@ -22,60 +19,69 @@ import shutil
 import argparse
 import logging
 from pathlib import Path
-from typing import Tuple, List
+from collections import Counter
+from typing import Dict, Tuple, List
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'}
+
 
 def find_images_and_masks(input_dir: Path) -> Tuple[List[Path], List[Path]]:
-    """Find all images and masks in the input directory."""
-    # Common image extensions
-    image_extensions = {'.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'}
-    
-    images = []
-    masks = []
-    
-    for file_path in input_dir.iterdir():
-        if not file_path.is_file():
-            continue
-            
-        name = file_path.name
-        
-        # Check if it's a mask file (ends with .mask.png or similar patterns)
-        if '.mask.png' in name.lower() or name.endswith('.mask.png'):
-            masks.append(file_path)
-        elif file_path.suffix in image_extensions:
-            images.append(file_path)
-    
-    return sorted(images), sorted(masks)
+    """
+    Collect every image and mask under input_dir, recursively.
+
+    When subdirectories hold images, files loose at the top level are treated as
+    leftovers rather than capture output and are skipped.
+
+    Args:
+        input_dir: Directory to search, typically a specimen's image bundle.
+
+    Returns:
+        Sorted (images, masks) lists.
+    """
+    top_images, top_masks = [], []
+    nested_images, nested_masks = [], []
+
+    for dir_path, _dir_names, file_names in os.walk(input_dir):
+        directory = Path(dir_path)
+        at_top = directory == input_dir
+
+        for file_name in file_names:
+            file_path = directory / file_name
+
+            # Masks end in .png too, so they must be claimed before the image test.
+            if '.mask.png' in file_name.lower():
+                (top_masks if at_top else nested_masks).append(file_path)
+            elif file_path.suffix in IMAGE_EXTENSIONS:
+                (top_images if at_top else nested_images).append(file_path)
+
+    if not nested_images:
+        return sorted(top_images), sorted(top_masks)
+
+    if top_images:
+        logger.info(f"Ignoring {len(top_images)} image(s) loose in {input_dir}; using subdirectories")
+
+    return sorted(nested_images), sorted(nested_masks)
 
 
 def get_mask_base_name(mask_path: Path) -> str:
     """
-    Extract base name from mask file.
+    Recover the image base name a mask belongs to.
 
-    Some exports stack the '.<ext>.mask' suffix more than once, so strip it
-    repeatedly until nothing is left to remove.
-
-    Examples:
-      'camera3_camera 3_IMG_7477.jpg.mask.png' -> 'camera3_camera 3_IMG_7477'
-      'camera3_camera 3_IMG_7477.JPG.mask.png' -> 'camera3_camera 3_IMG_7477'
-      'camera1_IMG_3009.jpg.mask.jpg.mask.png' -> 'camera1_IMG_3009'
+    Strips the trailing '.png' and every '.<ext>.mask' layer, since repeated mask
+    exports stack that suffix (camera1_IMG_3009.jpg.mask.jpg.mask.png).
     """
     name = mask_path.name
 
-    # Drop the trailing '.png' of the mask file itself, then peel off every
-    # '.<ext>.mask' / '.mask' layer left behind by repeated mask exports.
     if name.lower().endswith('.png'):
         name = name[:-4]
 
-    # Pattern: basename.jpg.mask or basename.JPG.mask (also .jpeg/.png), plus a
-    # bare '.mask' fallback for masks with no intermediate extension.
     patterns = [
-        r'(.+)\.[jJ][pP][eE]?[gG]\.mask$',  # .jpg.mask or .jpeg.mask
-        r'(.+)\.[pP][nN][gG]\.mask$',        # .png.mask
-        r'(.+)\.mask$',                       # .mask (fallback)
+        r'(.+)\.[jJ][pP][eE]?[gG]\.mask$',
+        r'(.+)\.[pP][nN][gG]\.mask$',
+        r'(.+)\.mask$',
     ]
 
     stripped = True
@@ -92,33 +98,65 @@ def get_mask_base_name(mask_path: Path) -> str:
 
 
 def match_images_to_masks(images: List[Path], masks: List[Path]) -> List[Tuple[Path, Path]]:
-    """Match images to their corresponding masks."""
-    # Create lookup dict for masks by base name (case-insensitive)
+    """Pair each image with its mask, matching on base name."""
     mask_lookup = {}
     for mask in masks:
         base = get_mask_base_name(mask).lower()
         mask_lookup[base] = mask
-    
+
     pairs = []
     unmatched_images = []
-    
+
     for image in images:
-        # Get image base name (without extension)
         image_base = image.stem.lower()
-        
+
         if image_base in mask_lookup:
             pairs.append((image, mask_lookup[image_base]))
         else:
             unmatched_images.append(image)
-    
+
     if unmatched_images:
         logger.warning(f"Found {len(unmatched_images)} images without masks:")
-        for img in unmatched_images[:5]:  # Show first 5
+        for img in unmatched_images[:5]:
             logger.warning(f"  - {img.name}")
         if len(unmatched_images) > 5:
             logger.warning(f"  ... and {len(unmatched_images) - 5} more")
-    
+
     return pairs
+
+
+def resolve_output_stems(images: List[Path]) -> Dict[Path, str]:
+    """
+    Assign each image a unique output stem.
+
+    Merging subdirectories can bring together identical file names, which would
+    otherwise overwrite each other, so clashes take their parent directory as a prefix.
+
+    Args:
+        images: Source image paths, in output order.
+
+    Returns:
+        Mapping of image path to output stem.
+    """
+    repeated = {stem for stem, count in Counter(i.stem for i in images).items() if count > 1}
+    stems: Dict[Path, str] = {}
+    used = set()
+
+    for image_path in images:
+        stem = f"{image_path.parent.name}_{image_path.stem}" if image_path.stem in repeated else image_path.stem
+
+        candidate, suffix = stem, 2
+        while candidate in used:
+            candidate = f"{stem}_{suffix}"
+            suffix += 1
+
+        if candidate != image_path.stem:
+            logger.warning(f"Duplicate name '{image_path.stem}' from {image_path.parent} written as '{candidate}'")
+
+        used.add(candidate)
+        stems[image_path] = candidate
+
+    return stems
 
 
 def create_symlink(src, dest):
@@ -136,89 +174,81 @@ def prepare_dataset(
     include_unmatched: bool = False
 ) -> dict:
     """
-    Organize dataset into separate images/ and masks/ directories.
-    
+    Organize a specimen into one output directory with images/ and masks/.
+
     Args:
-        input_dir: Directory containing mixed images and masks
-        output_dir: Output directory (will create images/ and masks/ subdirs)
-        mode: One of "copy", "move", or "symlink"
-        include_unmatched: If True, include images without masks
-        
+        input_dir: Directory of mixed images and masks, searched recursively.
+        output_dir: Destination, gains images/ and masks/ subdirectories.
+        mode: One of "copy", "move", or "symlink".
+        include_unmatched: Also emit images that have no mask.
+
     Returns:
-        Dictionary with statistics about the operation
+        Dictionary with statistics about the operation.
     """
-    # Create output directories
     images_dir = output_dir / "images"
     masks_dir = output_dir / "masks"
     images_dir.mkdir(parents=True, exist_ok=True)
     masks_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Find files
+
     images, masks = find_images_and_masks(input_dir)
-    logger.info(f"Found {len(images)} images and {len(masks)} masks")
-    
+    source_dirs = {image.parent for image in images}
+    logger.info(f"Found {len(images)} images and {len(masks)} masks across {len(source_dirs)} directories")
+
     if not images:
         logger.error("No images found!")
         return {"error": "No images found"}
-    
-    # Match images to masks
+
     pairs = match_images_to_masks(images, masks)
     logger.info(f"Matched {len(pairs)} image-mask pairs")
-    
-    # Select operation based on mode
+
+    matched_images = {image for image, _ in pairs}
+    unmatched = [image for image in images if image not in matched_images] if include_unmatched else []
+    stems = resolve_output_stems([image for image, _ in pairs] + unmatched)
+
     operations = {
         "copy": (shutil.copy2, "Copying"),
         "move": (shutil.move, "Moving"),
         "symlink": (create_symlink, "Symlinking"),
     }
     operation, op_name = operations[mode]
-    
+
     processed = 0
     for image_path, mask_path in pairs:
-        # Process image (preserve original name)
-        dest_image = images_dir / f"{image_path.stem}.jpg"
-        operation(image_path, dest_image)
-        
-        # Process mask (rename to match image stem + .png)
-        mask_dest_name = f"{image_path.stem}.png"
-        dest_mask = masks_dir / mask_dest_name
-        operation(mask_path, dest_mask)
-        
+        stem = stems[image_path]
+        operation(image_path, images_dir / f"{stem}.jpg")
+
+        # COLMAP pairs a mask to its image by name, so the mask takes the image stem.
+        operation(mask_path, masks_dir / f"{stem}.png")
+
         processed += 1
         if processed % 50 == 0:
             logger.info(f"{op_name} {processed}/{len(pairs)} pairs...")
-    
-    # Handle unmatched images if requested
-    unmatched_count = 0
-    if include_unmatched:
-        matched_images = {p[0] for p in pairs}
-        unmatched = [img for img in images if img not in matched_images]
-        
-        for image_path in unmatched:
-            dest_image = images_dir / f"{image_path.stem}.jpg"
-            operation(image_path, dest_image)
-            unmatched_count += 1
-        
-        if unmatched_count > 0:
-            logger.info(f"Included {unmatched_count} images without masks")
-    
+
+    for image_path in unmatched:
+        operation(image_path, images_dir / f"{stems[image_path]}.jpg")
+
+    if unmatched:
+        logger.info(f"Included {len(unmatched)} images without masks")
+
     stats = {
         "total_images": len(images),
         "total_masks": len(masks),
+        "source_dirs": len(source_dirs),
         "matched_pairs": len(pairs),
-        "unmatched_included": unmatched_count,
+        "unmatched_included": len(unmatched),
         "images_dir": str(images_dir),
         "masks_dir": str(masks_dir),
         "mode": mode
     }
-    
+
     logger.info(f"\n{'='*60}")
     logger.info(f"Dataset preparation complete!")
     logger.info(f"  Images: {images_dir}")
     logger.info(f"  Masks:  {masks_dir}")
     logger.info(f"  Pairs:  {len(pairs)}")
+    logger.info(f"  Dirs:   {len(source_dirs)}")
     logger.info(f"{'='*60}")
-    
+
     return stats
 
 
@@ -228,21 +258,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage - copy files to organized structure (default)
-  python prepare_dataset.py /path/to/mixed/data --out /path/to/output
+  # A whole specimen - every camera folder lands in one scene (default: copy)
+  python pipeline/preparation/prepare_uf_dataset.py \\
+      data/morphosource/000381689/UF_Fish_181080__000816964/UF_Fish_181080_images \\
+      --out data/uf_fish_181080
 
   # Move files instead of copying (saves disk space)
-  python prepare_dataset.py /path/to/mixed/data --out /path/to/output --mode move
+  python pipeline/preparation/prepare_uf_dataset.py /path/to/specimen --out /path/to/output --mode move
 
   # Create symbolic links (saves disk space, keeps originals)
-  python prepare_dataset.py /path/to/mixed/data --out /path/to/output --mode symlink
+  python pipeline/preparation/prepare_uf_dataset.py /path/to/specimen --out /path/to/output --mode symlink
 
   # Include images that don't have matching masks
-  python prepare_dataset.py /path/to/mixed/data --out /path/to/output --include-unmatched
+  python pipeline/preparation/prepare_uf_dataset.py /path/to/specimen --out /path/to/output --include-unmatched
         """
     )
     parser.add_argument("input_dir", type=Path, 
-                        help="Input directory containing mixed images and masks")
+                        help="Input directory containing mixed images and masks, searched recursively")
     parser.add_argument("--out", type=Path, default=None,
                         help="Output directory (default: input_dir/organized)")
     parser.add_argument("--mode", type=str, choices=["copy", "move", "symlink"], default="copy",
