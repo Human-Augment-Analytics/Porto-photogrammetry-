@@ -8,8 +8,7 @@ requests
 trimesh
 matplotlib
 torchvision
-numpy==1.26.4
-opencv-python
+numpy
 scikit-learn
 torch
 Pillow

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Shared installer behind the per-GPU wrappers (setup_l40s/a100/b200.sh, auto_setup.sh).
-# Wrappers must export: GPU_LABEL, GPU_ARCH, CUDA_MODULE, TORCH_SPEC, TORCH_INDEX_URL.
+# Wrappers must export: GPU_LABEL, GPU_ARCH, CUDA_MODULE, TORCH_SPEC, TORCH_INDEX_URL,
+# NUMPY_GENERATION (1 or 2, matching the torch wheel's numpy C-ABI).
 # Optional: BACKENDS (default "sugar 2dgs pgsr gw"), SKIP_TETRA=1, PYTORCH3D_WHEEL=<url>.
 set -euo pipefail
 
@@ -9,6 +10,7 @@ set -euo pipefail
 : "${CUDA_MODULE:?set by wrapper}"
 : "${TORCH_SPEC:?set by wrapper}"
 : "${TORCH_INDEX_URL:?set by wrapper}"
+: "${NUMPY_GENERATION:?set by wrapper}"
 BACKENDS="${BACKENDS:-sugar 2dgs pgsr gw}"
 SKIP_TETRA="${SKIP_TETRA:-0}"
 
@@ -40,11 +42,12 @@ echo "python:      $(python --version) @ $(command -v python)"
 [ "$PYV" = "3.10" ] || echo "WARN: Python $PYV (repo targets 3.10)."
 PIP="python -m pip"
 
-# numpy 2.x breaks the repo's pinned scipy/scikit-learn (C-ABI mismatch). Pin <2
-# globally so no transitive dep (torch, fvcore, ...) silently pulls numpy 2.x.
-NUMPY_CONSTRAINT="$(mktemp)"; echo "numpy<2" > "$NUMPY_CONSTRAINT"
-export PIP_CONSTRAINT="$NUMPY_CONSTRAINT"
-trap 'rm -f "$NUMPY_CONSTRAINT"' EXIT
+# torch and scipy/scikit-* must agree on the numpy C-ABI, so the wrapper's torch
+# wheel picks the constraint file; applied globally to catch transitive upgrades.
+CONSTRAINTS="$REPO_ROOT/constraints/numpy${NUMPY_GENERATION}.txt"
+[ -f "$CONSTRAINTS" ] || { echo "ERROR: no constraints file $CONSTRAINTS"; exit 1; }
+export PIP_CONSTRAINT="$CONSTRAINTS"
+echo "Constraints: $CONSTRAINTS"
 
 # --- Submodules (light_glue + pytorch3d are git submodules) -------------------
 banner "Submodules"
@@ -137,21 +140,32 @@ esac
 
 # --- Verify -------------------------------------------------------------------
 banner "Verifying imports"
-python - <<'PY'
-import importlib, torch
+NUMPY_GENERATION="$NUMPY_GENERATION" python - <<'PY'
+import importlib, os, numpy, torch
 print("torch", torch.__version__, "| cuda", torch.version.cuda,
       "| dev cap", torch.cuda.get_device_capability(0) if torch.cuda.is_available() else "no-GPU-here")
+
+want = int(os.environ["NUMPY_GENERATION"])
+got = int(numpy.__version__.split(".")[0])
+if got != want:
+    print(f"WARN: numpy {numpy.__version__} but this torch wheel needs numpy {want}.x — ABI mismatch")
+
+# torch rejects arrays from a foreign numpy ABI, which import checks alone miss.
+try:
+    torch.from_numpy(numpy.zeros((2, 2), dtype=numpy.uint8))
+    print("numpy", numpy.__version__, "<-> torch interop OK")
+except Exception as e:
+    print(f"FAIL: torch.from_numpy | {type(e).__name__}: {e}")
+
 checks = {
-    "numpy": "numpy", "scipy.spatial": "scipy", "sklearn": "scikit-learn",
+    "scipy.spatial": "scipy", "sklearn": "scikit-learn", "skimage": "scikit-image",
     "pycolmap": "pycolmap", "open3d": "open3d", "vggt": "vggt", "pytorch3d": "pytorch3d",
+    "trimesh": "trimesh",
     "diff_gaussian_rasterization": "diff_gaussian_rasterization (SuGaR/3DGS)",
     "simple_knn._C": "simple_knn (SuGaR/3DGS)",
     "diff_surfel_rasterization": "diff_surfel_rasterization (2DGS)",
     "diff_plane_rasterization": "diff_plane_rasterization (PGSR)",
 }
-import numpy
-if int(numpy.__version__.split(".")[0]) >= 2:
-    print("WARN: numpy", numpy.__version__, "(>=2 breaks pinned scipy/sklearn ABI)")
 ok, miss = [], []
 for mod, label in checks.items():
     try: importlib.import_module(mod); ok.append(label)

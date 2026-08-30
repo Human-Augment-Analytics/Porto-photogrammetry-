@@ -1,0 +1,9 @@
+# Pins for CUDA 12.8+ / torch 2.9.1 wheels, which are built against the numpy 2.x C-ABI.
+numpy==2.2.6
+scipy==1.15.3
+scikit-learn==1.6.1
+scikit-image==0.25.2
+imageio==2.37.4
+opencv-python==4.11.0.86
+kornia==0.8.2
+iopath==0.1.10

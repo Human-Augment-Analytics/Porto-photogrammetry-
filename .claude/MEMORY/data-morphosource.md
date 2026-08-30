@@ -14,8 +14,8 @@ The script needs the `morphosource` package (pinned as `morphosource>=1.2.0` in
 python -m pip install --upgrade morphosource
 ```
 
-Pure Python (deps `pygbif`, `requests`), no numpy dependency, so the repo's `numpy<2` pin is
-unaffected.
+Pure Python (deps `pygbif`, `requests`), no numpy dependency, so it is unaffected by the
+numpy generation the environment is pinned to.
 
 ## API key
 

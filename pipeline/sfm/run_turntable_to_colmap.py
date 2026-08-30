@@ -470,7 +470,8 @@ def main():
     for ci, k in enumerate(sorted(shared_focal), start=1):
         cam = pycolmap.Camera.create(ci, "SIMPLE_PINHOLE", shared_focal[k], W, H)
         cam.camera_id = ci
-        out_rec.add_camera(cam)
+        # pycolmap>=4 needs every camera to belong to a rig.
+        out_rec.add_camera_with_trivial_rig(cam)
         cam_id[k] = ci
     for dbi in db_images:
         R, C = poses[dbi.name]
@@ -478,9 +479,8 @@ def main():
         rigid = pycolmap.Rigid3d(pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C)
         img = pycolmap.Image(name=dbi.name, camera_id=cam_id[group_key(dbi.name, args.camera_regex)],
                              image_id=dbi.image_id)
-        img.cam_from_world = rigid
-        out_rec.add_image(img)
-        out_rec.register_image(dbi.image_id)
+        # pycolmap>=4 keeps the pose on the frame; supplying one also registers the image.
+        out_rec.add_image_with_trivial_frame(img, rigid)
 
     out_sparse = str(out_dir / "sparse" / "0")
     tri = pycolmap.triangulate_points(out_rec, db_path, str(out_dir / "images"), out_sparse)

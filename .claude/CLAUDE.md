@@ -54,8 +54,8 @@ python pipeline/reconstruction/run_2dgs.py <sfm> <out>
 ```
 
 There is **no `environment.yml`** — `scripts/auto_setup.sh` (or the manual pip sequence in
-README) is the install path. Details and knobs (`BACKENDS`, `SKIP_TETRA`, numpy<2 pin, stale
-`build/` dirs): [environment-and-gpu.md](MEMORY/environment-and-gpu.md).
+README) is the install path. Details and knobs (`BACKENDS`, `SKIP_TETRA`, `NUMPY_GENERATION`,
+stale `build/` dirs): [environment-and-gpu.md](MEMORY/environment-and-gpu.md).
 
 ## Gotchas worth knowing before you type
 
@@ -71,6 +71,8 @@ README) is the install path. Details and knobs (`BACKENDS`, `SKIP_TETRA`, numpy<
   flags to the training step only; its boolean flags use `--no-<flag>` spellings.
 - `run_pgsr.py` flattens `sparse/0/` → `sparse/` because PGSR expects no `0/`.
 - COLMAP IDs are 1-indexed — `+1` offset from VGGT batch indices.
+- numpy/scipy/scikit-* versions live in `constraints/numpy{1,2}.txt`, not `requirements.txt`;
+  the generation must match the GPU's torch wheel or imports break at runtime, not at install.
 - `download_morphosource_project.py` defaults to a **seeded 3-specimen sample** (~3.2 GB), not the
   whole 869 GB project; `--dry-run` costs nothing and needs no API key.
 - `src/pipeline/` is legacy first-generation code; use `pipeline/` for new work.

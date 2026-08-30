@@ -32,6 +32,7 @@ concise and describe purpose rather than walking through behaviour — no worked
 pipeline/       Canonical entry points (preparation/, sfm/, reconstruction/)
 baseline/       Meshroom wrapper
 scripts/        Per-GPU installers (auto_setup.sh + setup_{l40s,a100,h100,b200,common}.sh)
+constraints/    numpy-generation pip pins (numpy1.txt, numpy2.txt), selected by NUMPY_GENERATION
 src/            Backends: vggt/, sugar/, 2dgs/, pgsr/, gaussian_wrapping/, light_glue/, pytorch3d/
 assets/         README result grids
 data/, output/  Local scene data and run outputs (not for commit)

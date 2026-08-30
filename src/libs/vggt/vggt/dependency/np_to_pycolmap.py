@@ -95,17 +95,16 @@ def batch_np_matrix_to_pycolmap(
                 model=camera_type, width=image_size[0], height=image_size[1], params=pycolmap_intri, camera_id=fidx + 1
             )
 
-            # add camera
-            reconstruction.add_camera(camera)
+            # pycolmap>=4 needs every camera to belong to a rig.
+            reconstruction.add_camera_with_trivial_rig(camera)
 
         # set image
         cam_from_world = pycolmap.Rigid3d(
             pycolmap.Rotation3d(extrinsics[fidx][:3, :3]), extrinsics[fidx][:3, 3]
         )  # Rot and Trans
 
-        image = pycolmap.Image(
-            id=fidx + 1, name=f"image_{fidx + 1}", camera_id=camera.camera_id, cam_from_world=cam_from_world
-        )
+        # pycolmap>=4 keeps the pose on the frame, so it is set when the image is added.
+        image = pycolmap.Image(image_id=fidx + 1, name=f"image_{fidx + 1}", camera_id=camera.camera_id)
 
         points2D_list = []
 
@@ -130,15 +129,13 @@ def batch_np_matrix_to_pycolmap(
 
         assert point2D_idx == len(points2D_list)
 
-        try:
-            image.points2D = pycolmap.ListPoint2D(points2D_list)
-            image.registered = True
-        except:
-            print(f"frame {fidx + 1} is out of BA")
-            image.registered = False
+        image.points2D = pycolmap.Point2DList(points2D_list)
 
-        # add image
-        reconstruction.add_image(image)
+        if not points2D_list:
+            print(f"frame {fidx + 1} is out of BA")
+
+        # Register even observation-free frames; pycolmap>=4 drops unregistered ones, shifting later image ids.
+        reconstruction.add_image_with_trivial_frame(image, cam_from_world)
 
     return reconstruction, valid_mask
 
@@ -243,17 +240,16 @@ def batch_np_matrix_to_pycolmap_wo_track(
                 model=camera_type, width=image_size[0], height=image_size[1], params=pycolmap_intri, camera_id=fidx + 1
             )
 
-            # add camera
-            reconstruction.add_camera(camera)
+            # pycolmap>=4 needs every camera to belong to a rig.
+            reconstruction.add_camera_with_trivial_rig(camera)
 
         # set image
         cam_from_world = pycolmap.Rigid3d(
             pycolmap.Rotation3d(extrinsics[fidx][:3, :3]), extrinsics[fidx][:3, 3]
         )  # Rot and Trans
 
-        image = pycolmap.Image(
-            id=fidx + 1, name=f"image_{fidx + 1}", camera_id=camera.camera_id, cam_from_world=cam_from_world
-        )
+        # pycolmap>=4 keeps the pose on the frame, so it is set when the image is added.
+        image = pycolmap.Image(image_id=fidx + 1, name=f"image_{fidx + 1}", camera_id=camera.camera_id)
 
         points2D_list = []
 
@@ -275,15 +271,13 @@ def batch_np_matrix_to_pycolmap_wo_track(
 
         assert point2D_idx == len(points2D_list)
 
-        try:
-            image.points2D = pycolmap.ListPoint2D(points2D_list)
-            image.registered = True
-        except:
-            print(f"frame {fidx + 1} does not have any points")
-            image.registered = False
+        image.points2D = pycolmap.Point2DList(points2D_list)
 
-        # add image
-        reconstruction.add_image(image)
+        if not points2D_list:
+            print(f"frame {fidx + 1} does not have any points")
+
+        # Register even observation-free frames; pycolmap>=4 drops unregistered ones, shifting later image ids.
+        reconstruction.add_image_with_trivial_frame(image, cam_from_world)
 
     return reconstruction
 

@@ -33,7 +33,7 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 - Linux (tested on RHEL 9)
 - Python 3.10
 - CUDA-capable GPU (80 GB+ VRAM recommended)
-- CUDA 12.8
+- CUDA 12.1 (Ampere/Hopper) or 12.8+ (Blackwell); see the per-GPU wrappers
 
 **Note**: VGGT requires a GPU with at least 80 GB of VRAM for large scenes. COLMAP and the reconstruction methods, however, can run on more modest hardware (32-40 GB), with tests conducted on a single NVIDIA A100 PCIe 40 GB.
 
@@ -65,17 +65,25 @@ bash scripts/setup_rtx_pro_6000.sh  # RTX Pro 6000 Blackwell (sm 12.0, CUDA 12.8
 Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the
 Gaussian Wrapping CGAL build.
 
+numpy and the packages built against its C-ABI (`scipy`, `scikit-learn`, `scikit-image`) are
+pinned in `constraints/numpy{1,2}.txt` rather than `requirements.txt`, because the required
+generation follows the GPU's torch wheel. Each wrapper selects one via `NUMPY_GENERATION`.
+
 #### Manual setup
 
 For unsupported GPUs or debugging, the scripts above wrap these steps:
 
 ```bash
-# Install Python dependencies
-python -m pip install -r requirements.txt
+# Select the constraint set matching the torch wheel below: numpy2.txt for
+# CUDA 12.8+ / torch 2.9.1, numpy1.txt for CUDA 12.1 / torch 2.3.1.
+export PIP_CONSTRAINT=constraints/numpy2.txt
 
 # Install PyTorch with CUDA (adjust URL for your CUDA version)
 python -m pip install torch==2.9.1 torchvision==0.24.1 \
     --index-url https://download.pytorch.org/whl/cu130
+
+# Install Python dependencies
+python -m pip install -r requirements.txt
 
 # Install nvdiffrast (required by SuGaR)
 python -m pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation
@@ -164,6 +172,7 @@ augenblick/
 │   ├── pipeline/              # Legacy first-generation pipeline
 │   └── utils/
 ├── scripts/                   # Per-GPU environment installers
+├── constraints/               # numpy-generation pins (numpy1.txt, numpy2.txt)
 └── .claude/
     ├── CLAUDE.md              # Agent orientation (succinct)
     └── MEMORY/                # Detailed codebase documentation
