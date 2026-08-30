@@ -3,7 +3,7 @@
 Extracts textured triangle meshes from 3DGS by regularising Gaussians onto an implicit surface,
 then binding them to an explicit mesh. Vendored in-tree (**not** a git submodule, despite older
 docs). Requires a pre-trained vanilla 3DGS checkpoint from
-`src/libs/sugar/gaussian_splatting/train.py`; `pipeline/reconstruction/run_sugar.py` produces it.
+`src/libs/sugar/gaussian_splatting/train.py`; `augenblick recon sugar` produces it.
 
 ## Training pipeline (`src/libs/sugar/train.py`, run from `src/libs/sugar/`)
 

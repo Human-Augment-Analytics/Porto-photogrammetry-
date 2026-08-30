@@ -35,7 +35,7 @@ python render.py -m <model_path> \
 
 Renders all views, TSDF-fuses the rendered depths, writes `tsdf_fusion.ply` +
 `tsdf_fusion_post.ply` (post-processing drops small disconnected clusters).
-Note `run_pgsr.py` overrides the defaults with `--max_depth 10.0 --voxel_size 0.001`
+Note the `pgsr` backend overrides the defaults with `--max_depth 10.0 --voxel_size 0.001`
 (`voxel_size` default changed in `906b955`).
 
 ## Key parameters (`arguments/__init__.py`)

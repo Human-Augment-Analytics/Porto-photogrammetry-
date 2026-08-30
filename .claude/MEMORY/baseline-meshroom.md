@@ -1,7 +1,7 @@
 # `baseline/` — Baseline Wrappers
 
 Thin wrappers around third-party photogrammetry tools used as qualitative comparisons. They
-match the logging style of `pipeline/reconstruction/run_2dgs.py` (banner, `subprocess.run`,
+match the logging style of the `2dgs` backend (banner, `subprocess.run`,
 total-time summary).
 
 ## Meshroom (AliceVision)

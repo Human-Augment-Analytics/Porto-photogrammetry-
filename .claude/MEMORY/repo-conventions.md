@@ -29,7 +29,8 @@ concise and describe purpose rather than walking through behaviour — no worked
 ## Repository layout
 
 ```
-pipeline/       Canonical entry points (preparation/, sfm/, reconstruction/)
+pipeline/       Data preparation (preparation/); SfM and reconstruction moved to src/augenblick/
+src/augenblick/ The pipeline package and its `augenblick` CLI
 baseline/       Meshroom wrapper
 scripts/        Per-GPU installers (auto_setup.sh + setup_{l40s,a100,h100,b200,common}.sh)
 constraints/    numpy-generation pip pins (numpy1.txt, numpy2.txt), selected by NUMPY_GENERATION
@@ -54,7 +55,7 @@ data/, output/  Local scene data and run outputs (not for commit)
 - COLMAP IDs (image / camera / point3D) are **1-indexed**; VGGT batch index → COLMAP ID has a
   `+1` offset throughout.
 - COLMAP mask files must be named `<image_name>.png` (`foo.jpg.png`, not `foo.png`) — hence the
-  `masks_colmap/` symlink dirs in `run_masked_colmap.py` and `run_turntable_to_colmap.py`.
+  `masks_colmap/` symlink dir built by `Scene.link_colmap_masks()`.
 - `masks/` convention elsewhere in the repo: binary PNG named after the image *stem*, white =
   foreground.
 - Turntable camera grouping keys off `--camera_regex` (default `camera\d+`) and orders frames by

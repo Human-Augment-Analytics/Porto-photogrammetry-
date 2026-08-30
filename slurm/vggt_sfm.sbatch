@@ -54,8 +54,4 @@ mkdir -p "$OUT"
 
 echo "scene      : $SCENE_NAME ($IDX of ${#SCENES[@]}) -> $OUT"
 
-# run_vggt_to_colmap.py takes required flags, not positionals.
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir  "$SCENE" \
-    --output_dir "$OUT" \
-    "$@"
+augenblick sfm vggt --scene "$SCENE" --output "$OUT" "$@"

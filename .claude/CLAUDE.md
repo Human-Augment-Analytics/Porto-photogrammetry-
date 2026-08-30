@@ -25,6 +25,7 @@ below); only add to CLAUDE.md if it changes how the repo is invoked or navigated
 | [baseline-meshroom.md](MEMORY/baseline-meshroom.md) | Meshroom wrapper + reference runtimes |
 | [repo-conventions.md](MEMORY/repo-conventions.md) | Doc rule, repo layout, legacy code, ID/naming and commit conventions |
 | [cluster-slurm.md](MEMORY/cluster-slurm.md) | SLURM job scripts, partitions/accounts, GPU switch, batch-env gotchas |
+| [augenblick-package.md](MEMORY/augenblick-package.md) | The `src/augenblick` package: ABCs, registry, config bridge, CLI, adding a backend |
 
 ## Project overview
 
@@ -36,8 +37,8 @@ question is how different SfM initialisations interact with each mesh extractor.
 |-------|---------|
 | Data acquisition | `scripts/download_morphosource_project.py` (MorphoSource project 000381689) |
 | Data preparation | `pipeline/preparation/prepare_uf_dataset.py` |
-| SfM | `pipeline/sfm/run_vggt_to_colmap.py` (± `--use_ba`), `run_colmap.sh`, `run_masked_colmap.py`, `run_turntable_to_colmap.py` |
-| Reconstruction | `pipeline/reconstruction/run_{sugar,2dgs,pgsr,gw}.py` |
+| SfM | `augenblick sfm {vggt,colmap,turntable}` (VGGT takes `--use_ba`) |
+| Reconstruction | `augenblick recon {sugar,2dgs,pgsr,gw}` |
 | Baselines | Meshroom (`baseline/benchmark_meshroom.py`), RealityScan (external) |
 
 Everything between the stages is a COLMAP scene: `images/` + optional `masks/` + `sparse/0/`.
@@ -48,9 +49,10 @@ Everything between the stages is a COLMAP scene: `images/` + optional `masks/` +
 conda create --name augenblick python=3.10 && conda activate augenblick
 git submodule update --init --recursive
 bash scripts/auto_setup.sh                  # detects GPU, dispatches to setup_<gpu>.sh
+pip install -e . --no-deps --no-build-isolation   # the augenblick CLI; flags are mandatory
 
-python pipeline/sfm/run_vggt_to_colmap.py --input_dir <scene> --output_dir <sfm> --use_ba
-python pipeline/reconstruction/run_2dgs.py <sfm> <out>
+augenblick sfm vggt --scene <scene> --output <sfm> --use_ba
+augenblick recon 2dgs --scene <sfm> --output <out>
 ```
 
 There is **no `environment.yml`** — `scripts/auto_setup.sh` (or the manual pip sequence in
@@ -59,17 +61,15 @@ stale `build/` dirs): [environment-and-gpu.md](MEMORY/environment-and-gpu.md).
 
 ## Gotchas worth knowing before you type
 
-- `run_colmap.sh` takes `--input_dir` / `--output_dir` (renamed from `--input_path` /
-  `--output_path`), pointing at the dataset dir, not at `images/`.
-- `run_colmap.sh` copies masks to the output but does **not** feed them to SIFT — use
-  `run_masked_colmap.py` for mask-restricted features.
-- `run_turntable_to_colmap.py` refines an **existing** COLMAP scene; it is a post-SfM step, not a
-  standalone SfM.
+- `augenblick sfm turntable` refines an **existing** COLMAP scene; it is a post-SfM step, not a
+  standalone SfM. The `SceneRefiner` base class enforces this.
+- The `augenblick` CLI comes from `pip install -e . --no-deps --no-build-isolation`, and must be
+  installed into **each** per-GPU conda env — the SLURM jobs call the bare console script.
 - COLMAP wants masks named `<image_name>.png` (`foo.jpg.png`); the pycolmap scripts build a
   `masks_colmap/` symlink dir to satisfy this.
-- `run_gw.py` invokes its subprocesses by absolute path with **no `cwd`**, and forwards unknown
-  flags to the training step only; its boolean flags use `--no-<flag>` spellings.
-- `run_pgsr.py` flattens `sparse/0/` → `sparse/` because PGSR expects no `0/`.
+- Per-backend quirks (GW's no-`cwd` + passthrough, PGSR's `sparse/0/` flattening, SuGaR's
+  `--flag True` string booleans) are now class properties — see
+  [augenblick-package.md](MEMORY/augenblick-package.md).
 - COLMAP IDs are 1-indexed — `+1` offset from VGGT batch indices.
 - numpy/scipy/scikit-* versions live in `constraints/numpy{1,2}.txt`, not `requirements.txt`;
   the generation must match the GPU's torch wheel or imports break at runtime, not at install.
@@ -77,7 +77,8 @@ stale `build/` dirs): [environment-and-gpu.md](MEMORY/environment-and-gpu.md).
   whole 869 GB project; `--dry-run` costs nothing and needs no API key.
 - `src/pipeline/` is legacy first-generation code; use `pipeline/` for new work.
 - All third-party backends live under `src/libs/` (`2dgs`, `pgsr`, `sugar`,
-  `gaussian_wrapping`, `vggt`, `light_glue`, `pytorch3d`). First-party code is `pipeline/`
-  plus `src/pipeline/` (legacy) and `src/utils/`.
+  `gaussian_wrapping`, `vggt`, `light_glue`, `pytorch3d`). First-party code is
+  `src/augenblick/` (the package) and `pipeline/preparation/`, plus `src/pipeline/` (legacy)
+  and `src/utils/`.
 - Only `src/libs/light_glue`, `src/libs/pytorch3d`, and `src/libs/gaussian_wrapping/submodules/Depth-Anything-V2`
   are git submodules — `src/libs/sugar` and the other backends are vendored in-tree.

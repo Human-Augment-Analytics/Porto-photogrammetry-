@@ -12,10 +12,10 @@ python pipeline/preparation/prepare_uf_dataset.py <input_dir> \
 Splits a flat directory of mixed images and masks (`<stem>.JPG` + `<stem>.jpg.mask.png`) into
 `images/` + `masks/`. Images normalised to `.jpg`, masks to `.png` named after the image stem.
 
-## VGGT → COLMAP (`pipeline/sfm/run_vggt_to_colmap.py`)
+## VGGT → COLMAP (`augenblick sfm vggt`)
 
 ```bash
-python pipeline/sfm/run_vggt_to_colmap.py \
+augenblick sfm vggt \
     --input_dir <dir>            \  # must contain images/
     --output_dir <dir>           \
     [--use_masks] [--seed 42]    \
@@ -42,29 +42,10 @@ README's benchmarked BA invocation overrides the defaults:
 
 Model/geometry internals: [backend-vggt.md](backend-vggt.md).
 
-## Classical COLMAP (`pipeline/sfm/run_colmap.sh`)
+## Masked COLMAP (`augenblick sfm colmap`)
 
 ```bash
-bash pipeline/sfm/run_colmap.sh \
-    --input_dir <dataset_dir> --output_dir <output_dir> \
-    [--camera_model PINHOLE] [--single_camera 1] \
-    [--matcher {exhaustive,sequential,vocab_tree}] [--no_gpu] [--colmap <bin>]
-```
-
-Flags are `--input_dir` / `--output_dir` (renamed from `--input_path` / `--output_path` in
-`b1d9420` for consistency with the VGGT script). The script derives
-`IMAGE_PATH=<input>/images` and `MASK_PATH=<input>/masks` internally. Runs feature extraction →
-matching → mapper → `image_undistorter`; outputs undistorted `images/` + `sparse/0/`, cleans up
-the intermediate `distorted/` working dir, and prints per-step and total runtimes.
-
-Masks here are **only copied** to `<output>/masks/` at the end — SIFT extraction in this script
-does *not* use them. For mask-restricted features use `run_masked_colmap.py`.
-
-## Masked COLMAP (`pipeline/sfm/run_masked_colmap.py`, added `15f1816`)
-
-```bash
-python pipeline/sfm/run_masked_colmap.py \
-    --input_dir <dir> --output_dir <dir> \
+augenblick sfm colmap --scene <dir> --output <dir> \
     [--max_image_size 2400] [--camera_model SIMPLE_PINHOLE]
 ```
 
@@ -78,14 +59,14 @@ model with the most registered images to `sparse/0/`.
 - `camera_mode=PER_IMAGE`, `num_threads=8`, no undistortion step.
 - Prints `COLMAP_FAIL` and exits 2 if no model reconstructs; otherwise `COLMAP_DONE`.
 
-## Turntable refinement (`pipeline/sfm/run_turntable_to_colmap.py`, added `44d02b7`, BA in `0b5b069`)
+## Turntable refinement (`augenblick sfm turntable`, added `44d02b7`, BA in `0b5b069`)
 
 Post-processes an **existing COLMAP scene** (it needs `sparse/0/` as input, so run VGGT/COLMAP
 first) by fitting an exact turntable rig — fixed rotation axis, constant angular step — and
 re-solving poses on circular orbits.
 
 ```bash
-python pipeline/sfm/run_turntable_to_colmap.py \
+augenblick sfm turntable \
     --input_dir <existing_colmap_scene> --output_dir <dir> \
     [--use_masks] [--camera_regex 'camera\d+'] [--step_deg <float>] \
     [--max_image_size 2400] [--retriangulate {auto,tracks,sift}] \

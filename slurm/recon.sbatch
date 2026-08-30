@@ -2,7 +2,7 @@
 # Gaussian reconstruction for every scene under DATA_ROOT, one array task per scene.
 # Usage: BACKEND=2dgs SFM=vggt sbatch slurm/recon.sbatch [extra flags]
 # Single scene: sbatch --array=N slurm/recon.sbatch   (N = index in the sorted scene list)
-# BACKEND selects pipeline/reconstruction/run_<backend>.py (2dgs|sugar|pgsr|gw).
+# BACKEND selects the registered reconstruction backend (2dgs|sugar|pgsr|gw).
 # SFM selects which SfM result feeds it: results/<scene>/all/<SFM>/.
 #SBATCH --job-name=recon
 #SBATCH --account=arthur.porto
@@ -74,5 +74,5 @@ fi
 
 mkdir -p "$OUT"
 
-# All four reconstruction wrappers take two positionals.
-python "pipeline/reconstruction/run_${BACKEND}.py" "$SCENE" "$OUT" "$@"
+# The registry resolves BACKEND; an unknown name fails listing the valid set.
+augenblick recon "$BACKEND" --scene "$SCENE" --output "$OUT" "$@"

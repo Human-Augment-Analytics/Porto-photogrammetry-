@@ -62,6 +62,13 @@ bash scripts/setup_b200.sh      # B200  (sm 10.0, CUDA 12.8 / torch 2.9.1)
 bash scripts/setup_rtx_pro_6000.sh  # RTX Pro 6000 Blackwell (sm 12.0, CUDA 12.8 / torch 2.9.1)
 ```
 
+Then install the `augenblick` CLI into the same environment. Both flags are required: the package
+declares no dependencies of its own, so pip must not touch the pinned numpy/torch versions.
+
+```bash
+pip install -e . --no-deps --no-build-isolation
+```
+
 Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the
 Gaussian Wrapping CGAL build.
 
@@ -125,20 +132,15 @@ VGGT model weights (~4 GB) are downloaded automatically from `facebook/VGGT-1B` 
 
 ```
 augenblick/
-├── pipeline/                  # Canonical entry points
-│   ├── preparation/           #   Dataset preparation scripts
-│   │   └── prepare_uf_dataset.py
-│   ├── sfm/                   #   Structure-from-Motion scripts
-│   │   ├── run_vggt_to_colmap.py
-│   │   ├── run_turntable_to_colmap.py
-│   │   ├── run_masked_colmap.py
-│   │   └── run_colmap.sh
-│   └── reconstruction/        #   Surface reconstruction scripts
-│       ├── run_sugar.py
-│       ├── run_2dgs.py
-│       ├── run_pgsr.py
-│       └── run_gw.py
+├── pipeline/                  # Dataset preparation
+│   └── preparation/
+│       └── prepare_uf_dataset.py
 ├── src/
+│   ├── augenblick/            # The pipeline package (provides the `augenblick` CLI)
+│   │   ├── core/              #   Scene, config↔argparse bridge, registry, process, timing
+│   │   ├── sfm/               #   vggt, colmap, turntable
+│   │   ├── reconstruction/    #   2dgs, sugar, pgsr, gw
+│   │   └── cli/               #   Argument parsing and exit codes
 │   ├── libs/                  # Third-party backends (vendored + submodules)
 │   │   ├── vggt/              # VGGT model (Meta)
 │   │   │   └── vggt/          #   Importable Python package
@@ -219,36 +221,34 @@ python pipeline/preparation/prepare_uf_dataset.py /path/to/raw/data \
 Choose one SfM method to produce the COLMAP scene:
 
 ```bash
+# List the available methods
+augenblick sfm --list
+
 # VGGT with bundle adjustment
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/vggt_ba/ \
+augenblick sfm vggt \
+    --scene /path/to/scene/ \
+    --output /output/vggt_ba/ \
     --use_ba --shared_camera \
     --max_reproj_error 32 --max_query_pts 1048576 --query_frame_num 8
 
 # VGGT (no BA)
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/vggt/ \
+augenblick sfm vggt \
+    --scene /path/to/scene/ \
+    --output /output/vggt/ \
     --conf_thres_value 1.0
 
-# Classical COLMAP
-bash pipeline/sfm/run_colmap.sh \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/colmap/
-
 # Masked COLMAP (SIFT restricted to the object masks)
-# Same incremental SfM as above, but features are only extracted inside masks/,
+# Incremental SfM via pycolmap; features are only extracted inside masks/,
 # so background clutter does not pollute the reconstruction.
-python pipeline/sfm/run_masked_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/colmap_masked/
+augenblick sfm colmap \
+    --scene /path/to/scene/ \
+    --output /output/colmap_masked/
 
 # Turntable rig refinement (object on a turntable, static cameras)
 # Takes an existing COLMAP scene and re-solves poses on exact circular orbits.
-python pipeline/sfm/run_turntable_to_colmap.py \
-    --input_dir /output/vggt_ba/ \
-    --output_dir /output/turntable/ \
+augenblick sfm turntable \
+    --scene /output/vggt_ba/ \
+    --output /output/turntable/ \
     --use_masks
 ```
 
@@ -259,7 +259,7 @@ Replace `<sfm>` below with the SfM output directory (e.g., `/output/vggt_ba/`).
 #### SuGaR
 
 ```bash
-python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
+augenblick recon sugar --scene <sfm> --output /output/sugar/ \
     --gs_iterations 20000 --iteration_to_load 7000 \
     --regularization dn_consistency --high_poly --refinement_time long \
     --white_background
@@ -268,13 +268,13 @@ python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
 #### 2DGS
 
 ```bash
-python pipeline/reconstruction/run_2dgs.py <sfm> /output/2dgs/
+augenblick recon 2dgs --scene <sfm> --output /output/2dgs/
 ```
 
 #### PGSR
 
 ```bash
-python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
+augenblick recon pgsr --scene <sfm> --output /output/pgsr/ \
     --max_abs_split_points 0 --opacity_cull_threshold 0.05 \
     --max_depth 10.0 --voxel_size 0.001
 ```
@@ -282,7 +282,7 @@ python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
 #### Gaussian Wrapping
 
 ```bash
-python pipeline/reconstruction/run_gw.py <sfm> /output/gw/ \
+augenblick recon gw --scene <sfm> --output /output/gw/ \
     --iterations 30000 --sh_degree 3 --max_gaussians 6000000 \
     --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
 ```

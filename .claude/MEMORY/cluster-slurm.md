@@ -40,9 +40,8 @@ not change the partition; pass `--partition` too.
 
 ## Deliberate choices
 
-- **No `module load colmap/3.11`, no `export -f colmap`.** `run_masked_colmap.py` uses the
-  `pycolmap` Python API from the conda env and never shells out. Only `run_colmap.sh` needs a
-  binary (`COLMAP_BIN="colmap"`); it takes `--colmap <path>`.
+- **No `module load colmap/3.11`, no `export -f colmap`.** Every SfM path goes through the
+  `pycolmap` Python API from the conda env and never shells out, so no COLMAP binary is needed.
 - `module purge` first, since a batch shell inherits no `~/.bashrc`.
 - `conda activate` requires `source "$(conda info --base)/etc/profile.d/conda.sh"` first in a
   non-interactive shell.

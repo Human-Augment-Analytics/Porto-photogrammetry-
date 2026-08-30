@@ -6,11 +6,11 @@ elements (Gomez et al., 2026, arXiv:2604.07337). Rasterizer backends: `ours` (me
 `--rasterizer ours` + `--sdf_mode ours`.
 
 > **Layout:** internal modules import as `from scene.gaussian_model import ...` — i.e.
-> `src/libs/gaussian_wrapping/` is the package root. `run_gw.py` calls each script by absolute path
+> `src/libs/gaussian_wrapping/` is the package root. the `gw` backend calls each script by absolute path
 > with **no `cwd`**; Python prepends the script's own directory to `sys.path`, so the imports
 > resolve.
 
-## Three stages (orchestrated by `pipeline/reconstruction/run_gw.py`)
+## Three stages (orchestrated by `augenblick recon gw`)
 
 1. **Training** (`train.py`) — hardcoded `--rasterizer ours`, `--exposure_compensation`,
    `--data_device cpu`, `--N_max_gaussians 6000000`. Multi-view NCC + geometric consistency
@@ -50,7 +50,7 @@ via `get_mesh_path()` / `get_textured_mesh_path()`.
 | `pivot_based_mesh_extraction.py` | `marching_tetrahedra_with_binary_search()`; SDF mode dispatches to `integrate_ours` or SOF transmittance; `compute_valid_mask` reprojects pivots through every camera and ANDs `gt_mask` where present |
 | `texture_mesh.py` | Optimises `_verts_colors` against rendered views; rasterisation via `ScalableMeshRenderer` / `MeshRenderer` (nvdiffrast) |
 | `primal_adaptive_meshing_extraction.py` | Alternative extraction: sample candidates from an existing mesh, refine onto the occupancy isosurface, Delaunay reconstruct. `--bounding_box_method {scene,ground_truth,blender}` |
-| `scripts/train_and_extract_gw_{ours,radegs}.py` | Upstream end-to-end drivers (`run_gw.py` is the configurable local wrapper) |
+| `scripts/train_and_extract_gw_{ours,radegs}.py` | Upstream end-to-end drivers (`augenblick recon gw` is the configurable local wrapper) |
 | `scripts/benchmark_{tnt,mip360}_gw_{ours,radegs}.py` | Dataset batch benchmarks |
 | `scene/gaussian_model.py` | `GaussianModel` with `learn_occupancy`, `n_pivots_per_gaussian`, 3D Mip filter, exposure compensation, `densify_and_prune_radegs` |
 | `scene/__init__.py` | COLMAP vs Blender auto-detect; checkpoint load or `create_from_pcd` |
@@ -91,5 +91,5 @@ safe on the `ours` path.
 ## Status note
 
 `ed5c733` stripped Gaussian Wrapping from the README; `0ed266e` restored it. The current README
-documents GW, and `run_gw.py` plus the backend are live parts of the pipeline. (The old
+documents GW, and the `gw` backend plus its library are live parts of the pipeline. (The old
 `gaussian-wrapping-inclusion.md` audit doc was never committed and no longer exists.)

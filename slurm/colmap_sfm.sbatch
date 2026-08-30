@@ -53,14 +53,11 @@ OUT="$RESULT_ROOT/$SCENE_NAME/all/colmap"
 mkdir -p "$OUT"
 
 echo "scene      : $SCENE_NAME ($IDX of ${#SCENES[@]}) -> $OUT"
-# run_masked_colmap.py falls back to unmasked SfM when masks/ is absent.
+# The colmap SfM method falls back to unmasked SfM when masks/ is absent.
 if [ -d "$SCENE/masks" ]; then
     echo "masks      : $(ls -1 "$SCENE/masks" | wc -l) file(s)"
 else
     echo "masks      : none - running unmasked"
 fi
 
-# run_masked_colmap.py takes required flags, not positionals.
-python pipeline/sfm/run_masked_colmap.py \
-    --input_dir  "$SCENE" \
-    --output_dir "$OUT" "$@"
+augenblick sfm colmap --scene "$SCENE" --output "$OUT" "$@"

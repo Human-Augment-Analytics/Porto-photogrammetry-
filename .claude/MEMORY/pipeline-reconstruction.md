@@ -1,12 +1,13 @@
-# Reconstruction Wrappers (`pipeline/reconstruction/`)
+# Reconstruction Backends (`augenblick recon`)
 
-Four wrappers, each taking a COLMAP scene dir and an output dir positionally, orchestrating the
-underlying `src/` train + render scripts via `subprocess.run()` with a banner + total-time
-summary.
+Four backends, each taking `--scene` and `--output`, orchestrating the underlying `src/libs/`
+train + render scripts via `subprocess.run()` with a banner + per-stage + total-time summary.
+They are `SubprocessBackend` subclasses; the class machinery is documented in
+[augenblick-package.md](augenblick-package.md).
 
 ```bash
 # SuGaR: vanilla 3DGS → coarse SuGaR → mesh → refine → textured mesh (.obj)
-python pipeline/reconstruction/run_sugar.py <scene_dir> <output_dir> \
+augenblick recon sugar --scene <scene_dir> --output <output_dir> \
     [--gs_iterations 20000] [--gs_densify_grad_threshold] [--gs_densify_until_iter] \
     [--gs_lambda_dssim] [--gs_sh_degree] [--iteration_to_load 7000] \
     [--regularization dn_consistency] [--surface_level] [--n_vertices] \
@@ -14,21 +15,21 @@ python pipeline/reconstruction/run_sugar.py <scene_dir> <output_dir> \
     [--refinement_time long] [--square_size] [--postprocess_mesh] [--white_background] [--gpu]
 
 # 2DGS: training + TSDF mesh extraction
-python pipeline/reconstruction/run_2dgs.py <scene_dir> <output_dir> \
+augenblick recon 2dgs --scene <scene_dir> --output <output_dir> \
     [--iterations 30000] [--lambda_dist] [--lambda_normal] [--depth_ratio] \
     [--densify_grad_threshold] [--densify_until_iter] [--opacity_cull] [--white_background] \
     [--voxel_size -1.0] [--depth_trunc -1.0] [--sdf_trunc -1.0] [--num_cluster 50] \
     [--unbounded] [--mesh_res 1024] [--skip_mesh]
 
 # PGSR: copies scene, flattens sparse/0/ → sparse/, trains, TSDF mesh extraction
-python pipeline/reconstruction/run_pgsr.py <scene_dir> <output_dir> \
+augenblick recon pgsr --scene <scene_dir> --output <output_dir> \
     [--iterations 30000] [--max_abs_split_points 0] [--opacity_cull_threshold 0.05] \
     [--lambda_dssim] [--single_view_weight] [--multi_view_ncc_weight] [--multi_view_geo_weight] \
     [--multi_view_num] [--densify_grad_threshold] [--densify_until_iter] [--white_background] \
     [--max_depth 10.0] [--voxel_size 0.001] [--num_cluster] [--use_depth_filter] [--skip_mesh]
 
 # Gaussian Wrapping: train (--rasterizer ours) → pivot mesh extraction → texture refinement
-python pipeline/reconstruction/run_gw.py <scene_dir> <output_dir> \
+augenblick recon gw --scene <scene_dir> --output <output_dir> \
     [--iterations 30000] [--sh_degree 3] [--max_gaussians 6000000] \
     [--densify_until_iter] [--densify_grad_threshold] [--lambda_depth_normal] \
     [--multiview_factor] [--<many>_lr ...] [--extract_iteration] \
@@ -40,13 +41,14 @@ python pipeline/reconstruction/run_gw.py <scene_dir> <output_dir> \
 
 ## Wrapper-specific behaviour
 
-- **SuGaR / 2DGS / PGSR** set `cwd` to the backend source dir on each `subprocess.run`.
-- **PGSR** copies the scene and flattens `sparse/0/` → `sparse/` (PGSR expects no `0/`).
-- **`run_gw.py` is the exception**: it invokes `train.py`,
+- **SuGaR / 2DGS / PGSR** set `cwd` to the backend source dir (`use_cwd = True`).
+- **PGSR** copies the scene and flattens `sparse/0/` → `sparse/` in its `prepare()` hook
+  (PGSR expects no `0/`); the copy is reused if it already exists.
+- **GW is the exception** (`use_cwd = False`): it invokes `train.py`,
   `pivot_based_mesh_extraction.py`, and `texture_mesh.py` under `src/libs/gaussian_wrapping/` by
   **absolute path with no `cwd`**; imports like `from scene.gaussian_model import ...` resolve
   because Python prepends the script's own directory to `sys.path`. Unrecognised flags are
-  forwarded **only to the training step** (`parse_known_args()`). Boolean toggles use
+  forwarded **only to the training step** (gated on `accepts_passthrough`). Boolean toggles use
   `argparse.BooleanOptionalAction`, hence the `--no-postprocess` / `--no-filter_large_edges`
   spellings (both default on).
 

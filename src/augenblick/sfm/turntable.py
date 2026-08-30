@@ -1,20 +1,23 @@
-#!/usr/bin/env python3
 """Turntable-aware SfM refinement: fit the camera rig, refine it with a small
 bundle adjustment, and re-triangulate the input tracks against the fixed poses.
 Falls back to masked SIFT when the input has no usable tracks."""
-import argparse
 import logging
 import os
 import re
 import time
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import ClassVar, Literal, Optional
 
 import numpy as np
 import pycolmap
 from scipy.spatial.transform import Rotation as Rot
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from augenblick.core.registry import register_sfm
+from augenblick.core.scene import Scene
+from augenblick.sfm.base import SceneRefiner, SfMResult
+
 logger = logging.getLogger(__name__)
 
 
@@ -317,75 +320,103 @@ def rig_ba(rec, groups, axis, p0, step, rig, min_track=3, max_obs=20,
     return ax, p0v, float(st), rig_out, stats
 
 
-def main():
-    p = argparse.ArgumentParser(description="Turntable-aware SfM refinement to COLMAP")
-    p.add_argument("--input_dir", required=True,
-                   help="COLMAP scene with images/, optional masks/, and sparse/0/")
-    p.add_argument("--output_dir", required=True, help="Output COLMAP scene directory")
-    p.add_argument("--use_masks", action="store_true", default=False,
-                   help="Restrict SIFT to masks/ (auto-on if masks/ exists)")
-    p.add_argument("--camera_regex", default=r"camera\d+",
-                   help="Regex grouping images into physical cameras")
-    p.add_argument("--step_deg", type=float, default=None,
-                   help="Override the turntable angular step in degrees")
-    p.add_argument("--max_image_size", type=int, default=2400)
-    p.add_argument("--retriangulate", choices=["auto", "tracks", "sift"], default="auto",
-                   help="Point source: reuse input tracks ('tracks'), re-run masked "
-                        "SIFT ('sift'), or auto-pick by input track length ('auto')")
-    p.add_argument("--max_reproj", type=float, default=None,
-                   help="Max mean reprojection error (px) to keep a track; "
-                        "default adapts to 2.5x the median")
-    p.add_argument("--rig_ba", choices=["auto", "on", "off"], default="auto",
-                   help="Rig-constrained bundle adjustment before re-triangulation; "
-                        "'auto'/'on' enable it, 'off' skips it for ablation")
-    p.add_argument("--rig_ba_iters", type=int, default=3,
-                   help="Resection-intersection rounds for rig BA")
-    args = p.parse_args()
+@dataclass(frozen=True)
+class TurntableConfig:
+    """Rig-fitting, retriangulation, and fallback-SIFT parameters."""
 
-    t_start = time.time()
-    in_dir = Path(args.input_dir).resolve()
-    out_dir = Path(args.output_dir).resolve()
-    images_dir = in_dir / "images"
-    masks_dir = in_dir / "masks"
-    use_masks = args.use_masks or masks_dir.is_dir()
+    use_masks: bool = field(default=False, metadata={
+        "help": "Restrict SIFT to masks/ (auto-on if masks/ exists)"})
+    camera_regex: str = field(default=r"camera\d+", metadata={
+        "help": "Regex grouping images into physical cameras"})
+    step_deg: Optional[float] = field(default=None, metadata={
+        "help": "Override the turntable angular step in degrees"})
+    max_image_size: int = field(default=2400, metadata={"help": "Max image dimension for SIFT"})
+    retriangulate: Literal["auto", "tracks", "sift"] = field(default="auto", metadata={
+        "help": "Point source: reuse input tracks ('tracks'), re-run masked "
+                "SIFT ('sift'), or auto-pick by input track length ('auto')"})
+    max_reproj: Optional[float] = field(default=None, metadata={
+        "help": "Max mean reprojection error (px) to keep a track; "
+                "default adapts to 2.5x the median"})
+    rig_ba: Literal["auto", "on", "off"] = field(default="auto", metadata={
+        "help": "Rig-constrained bundle adjustment before re-triangulation; "
+                "'auto'/'on' enable it, 'off' skips it for ablation"})
+    rig_ba_iters: int = field(default=3, metadata={
+        "help": "Resection-intersection rounds for rig BA"})
 
-    rec = pycolmap.Reconstruction(str(in_dir / "sparse" / "0"))
-    groups = defaultdict(list)
-    for im in rec.images.values():
-        groups[group_key(im.name, args.camera_regex)].append(im)
-    for k in groups:
-        groups[k].sort(key=lambda im: order_key(im.name))
-    logger.info("Grouped %d images into %d cameras: %s", rec.num_images(), len(groups),
-                ", ".join(f"{k}:{len(v)}" for k, v in sorted(groups.items())))
 
-    axis, p0, step_meas = fit_axis_step(groups)
-    step = args.step_deg if args.step_deg is not None else step_meas
-    candidates = [step] if args.step_deg is not None else [step, -step]
+@register_sfm
+class TurntableRefiner(SceneRefiner):
+    """Refines an existing COLMAP scene by fitting and enforcing a turntable rig."""
 
-    # step sign is ambiguous; keep whichever fits the input centers best
-    poses = best = rig = None
-    for s in candidates:
-        ps, dc, dr, rg = fit_rig_poses(groups, axis, p0, s)
-        if best is None or dc < best[0]:
-            best, poses, step, rig = (dc, dr), ps, s, rg
-    dc, dr = best
-    logger.info("Rig axis %s, step %.3f deg; analytic vs input: dC %.4f, dR %.3f deg",
-                np.round(axis, 4), step, dc, dr)
+    name: ClassVar[str] = "turntable"
+    config_cls: ClassVar[type] = TurntableConfig
 
-    # reuse dense tracks if present, else fall back to masked SIFT
-    in_track = np.mean([pt.track.length() for pt in rec.points3D.values()]) \
-        if rec.num_points3D() else 0.0
-    mode = args.retriangulate
-    if mode == "auto":
-        mode = "tracks" if in_track >= 3.0 else "sift"
-    logger.info("Input mean track length %.1f -> retriangulation mode: %s", in_track, mode)
+    def run(self, scene: Scene, output_dir: Path) -> SfMResult:
+        """Fit the rig, then either re-triangulate the input tracks or re-run masked SIFT.
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
-    if not (out_dir / "images").exists():
-        os.symlink(images_dir, out_dir / "images")
+        Args:
+            scene: Existing COLMAP scene to refine.
+            output_dir: Directory to write the refined COLMAP scene into.
 
-    if mode == "tracks":
+        Returns:
+            An SfMResult for the refined reconstruction.
+        """
+        self.validate(scene)
+        args = self.config
+
+        t_start = time.time()
+        in_dir = scene.root.resolve()
+        out_dir = output_dir.resolve()
+        images_dir = in_dir / "images"
+        masks_dir = in_dir / "masks"
+        use_masks = args.use_masks or masks_dir.is_dir()
+
+        rec = pycolmap.Reconstruction(str(in_dir / "sparse" / "0"))
+        groups = defaultdict(list)
+        for im in rec.images.values():
+            groups[group_key(im.name, args.camera_regex)].append(im)
+        for k in groups:
+            groups[k].sort(key=lambda im: order_key(im.name))
+        logger.info("Grouped %d images into %d cameras: %s", rec.num_images(), len(groups),
+                    ", ".join(f"{k}:{len(v)}" for k, v in sorted(groups.items())))
+
+        axis, p0, step_meas = fit_axis_step(groups)
+        step = args.step_deg if args.step_deg is not None else step_meas
+        candidates = [step] if args.step_deg is not None else [step, -step]
+
+        # step sign is ambiguous; keep whichever fits the input centers best
+        poses = best = rig = None
+        for s in candidates:
+            ps, dc, dr, rg = fit_rig_poses(groups, axis, p0, s)
+            if best is None or dc < best[0]:
+                best, poses, step, rig = (dc, dr), ps, s, rg
+        dc, dr = best
+        logger.info("Rig axis %s, step %.3f deg; analytic vs input: dC %.4f, dR %.3f deg",
+                    np.round(axis, 4), step, dc, dr)
+
+        # reuse dense tracks if present, else fall back to masked SIFT
+        in_track = np.mean([pt.track.length() for pt in rec.points3D.values()]) \
+            if rec.num_points3D() else 0.0
+        mode = args.retriangulate
+        if mode == "auto":
+            mode = "tracks" if in_track >= 3.0 else "sift"
+        logger.info("Input mean track length %.1f -> retriangulation mode: %s", in_track, mode)
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
+        if not (out_dir / "images").exists():
+            os.symlink(images_dir, out_dir / "images")
+
+        if mode == "tracks":
+            return self._run_tracks(rec, groups, poses, axis, p0, step, rig,
+                                    scene, out_dir, masks_dir, use_masks, t_start)
+        return self._run_sift(rec, poses, scene, out_dir, images_dir, masks_dir,
+                              use_masks, t_start)
+
+    def _run_tracks(self, rec, groups, poses, axis, p0, step, rig,
+                    scene, out_dir, masks_dir, use_masks, t_start) -> SfMResult:
+        """Snap poses to the refined rig and re-triangulate the input tracks."""
+        args = self.config
         out_sparse = str(out_dir / "sparse" / "0")
         if use_masks and not (out_dir / "masks").exists():
             os.symlink(masks_dir, out_dir / "masks")
@@ -400,7 +431,7 @@ def main():
 
         stats = apply_track_preserving(rec, poses, args.camera_regex,
                                        max_reproj=args.max_reproj)
-    
+
         for cid, cam in list(rec.cameras.items()):
             if "SIMPLE_PINHOLE" not in str(cam.model):
                 f, cx, cy = cam.params[0], cam.params[1], cam.params[2]
@@ -411,85 +442,87 @@ def main():
         rec.write(out_sparse)
         logger.info("Track-preserving: %d points, mean track %.1f, reproj %.2f px (thr %.1f)",
                     stats["pts"], stats["track"], stats["reproj"], stats["thr"])
-        logger.info("Done in %.1fs -> %s", time.time() - t_start, out_dir)
-        return
+        elapsed = time.time() - t_start
+        logger.info("Done in %.1fs -> %s", elapsed, out_dir)
+        return SfMResult(output_dir=out_dir, elapsed=elapsed, scene=Scene(out_dir),
+                         num_images=rec.num_reg_images(), num_points=rec.num_points3D())
 
-    foc = defaultdict(list)
-    W = H = None
-    for im in rec.images.values():
-        cam = rec.cameras[im.camera_id]
-        foc[group_key(im.name, args.camera_regex)].append(cam.params[0])
-        W, H = cam.width, cam.height
-    shared_focal = {k: float(np.median(v)) for k, v in foc.items()}
+    def _run_sift(self, rec, poses, scene, out_dir, images_dir, masks_dir,
+                  use_masks, t_start) -> SfMResult:
+        """Re-run masked SIFT and triangulate against the fixed rig poses."""
+        args = self.config
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
-    if not (out_dir / "images").exists():
-        os.symlink(images_dir, out_dir / "images")
+        foc = defaultdict(list)
+        W = H = None
+        for im in rec.images.values():
+            cam = rec.cameras[im.camera_id]
+            foc[group_key(im.name, args.camera_regex)].append(cam.params[0])
+            W, H = cam.width, cam.height
+        shared_focal = {k: float(np.median(v)) for k, v in foc.items()}
 
-    mask_path = None
-    if use_masks:
-        if not (out_dir / "masks").exists():
-            os.symlink(masks_dir, out_dir / "masks")
-        # COLMAP looks for <image_name>.png; images are .jpg, so link <stem>.jpg.png
-        mc = out_dir / "masks_colmap"
-        mc.mkdir(exist_ok=True)
-        for m in os.listdir(masks_dir):
-            link = mc / f"{m.rsplit('.', 1)[0]}.jpg.png"
-            if not link.exists():
-                os.symlink(masks_dir / m, link)
-        mask_path = str(mc)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "sparse" / "0").mkdir(parents=True, exist_ok=True)
+        if not (out_dir / "images").exists():
+            os.symlink(images_dir, out_dir / "images")
 
-    db_path = str(out_dir / "database.db")
-    if os.path.exists(db_path):
-        os.remove(db_path)
-    ro = pycolmap.ImageReaderOptions()
-    if mask_path:
-        ro.mask_path = mask_path
-    ro.camera_model = "SIMPLE_PINHOLE"
-    eo = pycolmap.FeatureExtractionOptions()
-    eo.max_image_size = args.max_image_size
-    eo.num_threads = 8
+        mask_path = None
+        if use_masks:
+            if not (out_dir / "masks").exists():
+                os.symlink(masks_dir, out_dir / "masks")
+            # COLMAP looks for <image_name>.png; images are .jpg, so link <stem>.jpg.png
+            mask_dir = scene.link_colmap_masks(out_dir / "masks_colmap")
+            mask_path = str(mask_dir) if mask_dir else None
 
-    t0 = time.time()
-    pycolmap.extract_features(db_path, str(out_dir / "images"),
-                              camera_mode=pycolmap.CameraMode.PER_IMAGE,
-                              reader_options=ro, extraction_options=eo)
-    logger.info("SIFT extraction %.0fs", time.time() - t0)
-    t0 = time.time()
-    pycolmap.match_exhaustive(db_path)
-    logger.info("Matching %.0fs", time.time() - t0)
+        db_path = str(out_dir / "database.db")
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        ro = pycolmap.ImageReaderOptions()
+        if mask_path:
+            ro.mask_path = mask_path
+        ro.camera_model = "SIMPLE_PINHOLE"
+        eo = pycolmap.FeatureExtractionOptions()
+        eo.max_image_size = args.max_image_size
+        eo.num_threads = 8
 
-    db = pycolmap.Database()
-    db.open(db_path)
-    db_images = db.read_all_images()
-    db.close()
+        t0 = time.time()
+        pycolmap.extract_features(db_path, str(out_dir / "images"),
+                                  camera_mode=pycolmap.CameraMode.PER_IMAGE,
+                                  reader_options=ro, extraction_options=eo)
+        logger.info("SIFT extraction %.0fs", time.time() - t0)
+        t0 = time.time()
+        pycolmap.match_exhaustive(db_path)
+        logger.info("Matching %.0fs", time.time() - t0)
 
-    out_rec = pycolmap.Reconstruction()
-    cam_id = {}
-    for ci, k in enumerate(sorted(shared_focal), start=1):
-        cam = pycolmap.Camera.create(ci, "SIMPLE_PINHOLE", shared_focal[k], W, H)
-        cam.camera_id = ci
-        # pycolmap>=4 needs every camera to belong to a rig.
-        out_rec.add_camera_with_trivial_rig(cam)
-        cam_id[k] = ci
-    for dbi in db_images:
-        R, C = poses[dbi.name]
-        q = Rot.from_matrix(R).as_quat()  # x, y, z, w
-        rigid = pycolmap.Rigid3d(pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C)
-        img = pycolmap.Image(name=dbi.name, camera_id=cam_id[group_key(dbi.name, args.camera_regex)],
-                             image_id=dbi.image_id)
-        # pycolmap>=4 keeps the pose on the frame; supplying one also registers the image.
-        out_rec.add_image_with_trivial_frame(img, rigid)
+        db = pycolmap.Database()
+        db.open(db_path)
+        db_images = db.read_all_images()
+        db.close()
 
-    out_sparse = str(out_dir / "sparse" / "0")
-    tri = pycolmap.triangulate_points(out_rec, db_path, str(out_dir / "images"), out_sparse)
-    tl = [pt.track.length() for pt in tri.points3D.values()]
-    tri.write(out_sparse)
-    logger.info("Triangulated %d points, %d images, mean track %.2f",
-                tri.num_points3D(), tri.num_reg_images(), np.mean(tl))
-    logger.info("Done in %.1fs -> %s", time.time() - t_start, out_dir)
+        out_rec = pycolmap.Reconstruction()
+        cam_id = {}
+        for ci, k in enumerate(sorted(shared_focal), start=1):
+            cam = pycolmap.Camera.create(ci, "SIMPLE_PINHOLE", shared_focal[k], W, H)
+            cam.camera_id = ci
+            # pycolmap>=4 needs every camera to belong to a rig.
+            out_rec.add_camera_with_trivial_rig(cam)
+            cam_id[k] = ci
+        for dbi in db_images:
+            R, C = poses[dbi.name]
+            q = Rot.from_matrix(R).as_quat()  # x, y, z, w
+            rigid = pycolmap.Rigid3d(pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C)
+            img = pycolmap.Image(name=dbi.name,
+                                 camera_id=cam_id[group_key(dbi.name, args.camera_regex)],
+                                 image_id=dbi.image_id)
+            # pycolmap>=4 keeps the pose on the frame; supplying one also registers the image.
+            out_rec.add_image_with_trivial_frame(img, rigid)
 
-
-if __name__ == "__main__":
-    main()
+        out_sparse = str(out_dir / "sparse" / "0")
+        tri = pycolmap.triangulate_points(out_rec, db_path, str(out_dir / "images"), out_sparse)
+        tl = [pt.track.length() for pt in tri.points3D.values()]
+        tri.write(out_sparse)
+        logger.info("Triangulated %d points, %d images, mean track %.2f",
+                    tri.num_points3D(), tri.num_reg_images(), np.mean(tl))
+        elapsed = time.time() - t_start
+        logger.info("Done in %.1fs -> %s", elapsed, out_dir)
+        return SfMResult(output_dir=out_dir, elapsed=elapsed, scene=Scene(out_dir),
+                         num_images=tri.num_reg_images(), num_points=tri.num_points3D())

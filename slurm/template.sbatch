@@ -30,7 +30,5 @@ SCENE="data/CHANGE_ME"
 OUT="output/CHANGE_ME"
 
 # ================= EDIT BELOW: your command =================
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir  "$SCENE" \
-    --output_dir "$OUT"
+augenblick sfm vggt --scene "$SCENE" --output "$OUT"
 # ============================================================

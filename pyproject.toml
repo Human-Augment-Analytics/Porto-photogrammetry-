@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "augenblick"
+version = "0.1.0"
+requires-python = ">=3.10"
+# Dependencies are deliberately empty: numpy/scipy pins live in constraints/numpy{1,2}.txt
+# and must match the GPU's torch wheel. scripts/auto_setup.sh is the only installer.
+
+[project.scripts]
+augenblick = "augenblick.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["augenblick*"]
