@@ -67,23 +67,35 @@ data/morphosource/000381689/
     UF_Fish_233247_images.zip
     UF_Fish_233247_mesh_highpoly.zip
     UF_Fish_233247_images/             # only with --extract
-      camera1/camera1_IMG_8717.jpg
+      camera1/camera1_IMG_8717.JPG
       camera1/camera1_IMG_8717.jpg.mask.png
+      ms_usage_std_comm_no_rearc_ms_3d_limited.pdf
+      media-manifest-<uuid>.csv / .xlsx
 ```
 
-The extracted `cameraN/` dirs are exactly the mixed image+mask layout
-`prepare_uf_dataset.py` parses (`.jpg.mask.png` → `masks/<stem>.png`), so the hand-off is:
+**A download is a bundle, not the media file.** Each zip contains
+`Media <id> - <title>/<name>-<id>.zip` — the actual payload — plus the usage agreement PDF and
+the media manifests. `--extract` unwraps both layers and deletes the inner zip, so the payload
+lands directly under `<name>_images/` (a plain `unzip` leaves you one level short, holding a
+gigabyte-sized inner zip).
+
+Meshes unwrap to `object_full.obj` + `.mtl` + `object_full_diffuse.1001.png`; image series
+unwrap to `cameraN/` dirs — exactly the mixed image+mask layout `prepare_uf_dataset.py` parses
+(`*.JPG` beside `*.jpg.mask.png`, including the doubled `.jpg.mask.jpg.mask.png` suffix it
+strips). `prepare_uf_dataset.py` reads a **flat** directory, so feed it one camera at a time:
 
 ```bash
 python scripts/download_morphosource_project.py --num-specimens 1 --extract
 python pipeline/preparation/prepare_uf_dataset.py \
-    data/morphosource/000381689/UF_Fish_233247__000811670/UF_Fish_233247_images/camera1 \
-    --out data/uf_fish_233247
+    data/morphosource/000381689/UF_Fish_181080__000816964/UF_Fish_181080_images/camera1 \
+    --out data/uf_fish_181080_cam1
 ```
 
-Downloads are atomic (`.zip.part` → `os.replace`), verified with `zipfile.is_zipfile`, and
-re-runs skip files whose size already matches the API's `file_size_all`, so an interrupted pull
-resumes by simply re-running. Extraction rejects zip members with absolute or `..` paths.
+Downloads are atomic (`.zip.part` → `os.replace`) and validated with `zipfile.is_zipfile`, so an
+interrupted pull resumes by simply re-running: a re-run skips any file that already reads as a
+complete zip. Note it cannot skip on size — MorphoSource re-packs each bundle, so what lands on
+disk never matches the `file_size_all` the API advertises. Extraction rejects zip members with
+absolute or `..` paths.
 
 ## MorphoSource API gotchas
 

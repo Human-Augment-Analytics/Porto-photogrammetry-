@@ -18,6 +18,9 @@ Requires a MorphoSource API key in MORPHOSOURCE_API_KEY (not needed for --dry-ru
 By downloading you consent to the MorphoSource user agreements for those files:
 https://www.morphosource.org/terms
 
+Each download is a bundle: a zip holding "Media <id> - <title>/<name>-<id>.zip" -- the actual
+payload -- plus the usage agreement PDF and media manifests. --extract unwraps both layers.
+
 Output structure:
   output_dir/
     manifest.json
@@ -26,6 +29,8 @@ Output structure:
       UF_Herp_84293_images.zip
       UF_Herp_84293_mesh_highpoly.zip
       UF_Herp_84293_images/          # only with --extract
+        camera1/camera1_IMG_8717.JPG
+        camera1/camera1_IMG_8717.jpg.mask.png
 """
 import os
 import json
@@ -270,9 +275,8 @@ def target_file_name(media: Media, kind: str, used: set) -> str:
     return name
 
 
-def extract_bundle(zip_path: Path) -> None:
-    """Unzip beside the archive, refusing members that escape the destination."""
-    dest = zip_path.with_suffix("")
+def safe_extract(zip_path: Path, dest: Path) -> None:
+    """Unzip into dest, refusing members that escape it."""
     with zipfile.ZipFile(zip_path) as archive:
         for member in archive.namelist():
             normalized = posixpath.normpath(member)
@@ -280,6 +284,29 @@ def extract_bundle(zip_path: Path) -> None:
                 raise ValueError(f"Refusing to extract unsafe path '{member}' from {zip_path.name}")
         dest.mkdir(parents=True, exist_ok=True)
         archive.extractall(dest)
+
+
+def extract_bundle(zip_path: Path) -> None:
+    """Unzip beside the archive, unwrapping MorphoSource's bundle layer.
+
+    A download is not the media file itself: it is a bundle holding
+    "Media <id> - <title>/<name>-<id>.zip" alongside the usage agreement PDF and the media
+    manifests. Only that inner zip has the cameraN/*.JPG + *.jpg.mask.png payload, so extract
+    it too and drop it afterwards rather than keeping a second copy of a gigabyte.
+    """
+    dest = zip_path.with_suffix("")
+    safe_extract(zip_path, dest)
+
+    # Materialise the list before extracting, so inner payloads are not rescanned.
+    for inner in sorted(dest.rglob("*.zip")):
+        safe_extract(inner, dest)
+        inner.unlink()
+
+    # Drop the now-empty "Media <id> - <title>/" wrapper directories.
+    for directory in sorted(dest.rglob("*"), reverse=True):
+        if directory.is_dir() and not any(directory.iterdir()):
+            directory.rmdir()
+
     logger.info(f"  extracted -> {dest}")
 
 
@@ -287,13 +314,16 @@ def download_media(media: Media, kind: str, path: Path, download_config: Downloa
                    overwrite: bool, extract: bool) -> bool:
     expected_size = first(media.data, "file_size_all", 0) or 0
     if path.exists() and not overwrite:
-        # file_size_all counts the whole bundle, which is what the zip download contains.
-        if not expected_size or abs(path.stat().st_size - expected_size) <= 1024:
+        # Completeness is checked by reading the zip's central directory, not by size:
+        # MorphoSource re-packs each download (payload plus usage agreement and manifests), so
+        # the bundle never weighs exactly the file_size_all the API advertises. A half-written
+        # file cannot sit here anyway - downloads land on <name>.part and are renamed on success.
+        if zipfile.is_zipfile(path):
             logger.info(f"  {path.name} already present ({human_size(path.stat().st_size)}), skipping")
             if extract and not path.with_suffix("").exists():
                 extract_bundle(path)
             return True
-        logger.info(f"  {path.name} exists but size differs from the API, re-downloading")
+        logger.info(f"  {path.name} exists but is not a readable zip, re-downloading")
 
     partial = path.with_name(path.name + ".part")
     logger.info(f"  downloading {media.id} [{kind}] -> {path.name} ({human_size(expected_size)})")
