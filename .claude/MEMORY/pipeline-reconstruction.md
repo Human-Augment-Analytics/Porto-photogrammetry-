@@ -43,7 +43,7 @@ python pipeline/reconstruction/run_gw.py <scene_dir> <output_dir> \
 - **SuGaR / 2DGS / PGSR** set `cwd` to the backend source dir on each `subprocess.run`.
 - **PGSR** copies the scene and flattens `sparse/0/` → `sparse/` (PGSR expects no `0/`).
 - **`run_gw.py` is the exception**: it invokes `train.py`,
-  `pivot_based_mesh_extraction.py`, and `texture_mesh.py` under `src/gaussian_wrapping/` by
+  `pivot_based_mesh_extraction.py`, and `texture_mesh.py` under `src/libs/gaussian_wrapping/` by
   **absolute path with no `cwd`**; imports like `from scene.gaussian_model import ...` resolve
   because Python prepends the script's own directory to `sys.path`. Unrecognised flags are
   forwarded **only to the training step** (`parse_known_args()`). Boolean toggles use

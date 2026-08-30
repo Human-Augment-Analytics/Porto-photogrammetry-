@@ -48,7 +48,7 @@ trap 'rm -f "$NUMPY_CONSTRAINT"' EXIT
 
 # --- Submodules (light_glue + pytorch3d are git submodules) -------------------
 banner "Submodules"
-git submodule update --init src/light_glue src/pytorch3d
+git submodule update --init src/libs/light_glue src/libs/pytorch3d
 
 # --- 1. PyTorch (arch-specific wheel index) -----------------------------------
 banner "1/7 PyTorch"
@@ -60,8 +60,8 @@ $PIP install -r requirements.txt
 
 # --- 3. Editable source packages: VGGT + LightGlue ----------------------------
 banner "3/7 VGGT + LightGlue (editable)"
-$PIP install -e src/vggt       --no-build-isolation
-$PIP install -e src/light_glue --no-build-isolation
+$PIP install -e src/libs/vggt       --no-build-isolation
+$PIP install -e src/libs/light_glue --no-build-isolation
 
 # --- 4. pytorch3d (source build, arch-agnostic; or prebuilt wheel) ------------
 banner "4/7 pytorch3d"
@@ -69,7 +69,7 @@ if [ -n "${PYTORCH3D_WHEEL:-}" ]; then
     $PIP install fvcore iopath
     $PIP install --no-index --no-cache-dir pytorch3d -f "$PYTORCH3D_WHEEL"
 else
-    $PIP install -e src/pytorch3d --no-build-isolation
+    $PIP install -e src/libs/pytorch3d --no-build-isolation
 fi
 
 # --- 5. nvdiffrast (SuGaR texture export + GW mesh rasterisation) -------------
@@ -91,21 +91,21 @@ build() {
 
 # 3DGS base rasterizers — needed by SuGaR (and the vanilla 3DGS step).
 case " $BACKENDS " in *" sugar "*)
-    build src/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization
-    build src/sugar/gaussian_splatting/submodules/simple-knn
+    build src/libs/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization
+    build src/libs/sugar/gaussian_splatting/submodules/simple-knn
     ;;
 esac
 case " $BACKENDS " in *" 2dgs "*)
-    build src/2dgs/submodules/diff-surfel-rasterization ;;
+    build src/libs/2dgs/submodules/diff-surfel-rasterization ;;
 esac
 case " $BACKENDS " in *" pgsr "*)
-    build src/pgsr/submodules/diff-plane-rasterization ;;
+    build src/libs/pgsr/submodules/diff-plane-rasterization ;;
 esac
 case " $BACKENDS " in *" gw "*)
-    build src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
-    build src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms
-    build src/gaussian_wrapping/submodules/fused-ssim
-    build src/gaussian_wrapping/submodules/warp-patch-ncc
+    build src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
+    build src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms
+    build src/libs/gaussian_wrapping/submodules/fused-ssim
+    build src/libs/gaussian_wrapping/submodules/warp-patch-ncc
     ;;
 esac
 
@@ -123,7 +123,7 @@ case " $BACKENDS " in *" gw "*)
             echo "WARN: conda not found; assuming cmake/gmp/cgal already present."
         fi
         export CPATH="$CUDA_HOME/targets/x86_64-linux/include:${CPATH:-}"
-        TETRA="src/gaussian_wrapping/submodules/tetra_triangulation"
+        TETRA="src/libs/gaussian_wrapping/submodules/tetra_triangulation"
         ( cd "$TETRA"
           cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
                   -DCGAL_DIR="${CONDA_PREFIX:-/usr}/lib/cmake/CGAL" \

@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PGSR_DIR = REPO_ROOT / "src" / "pgsr"
+PGSR_DIR = REPO_ROOT / "src" / "libs" / "pgsr"
 TRAIN_SCRIPT = PGSR_DIR / "train.py"
 RENDER_SCRIPT = PGSR_DIR / "render.py"
 

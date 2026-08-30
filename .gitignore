@@ -6,6 +6,7 @@ output/*
 
 # Ignore Python cache
 src/*/__pycache__/
+src/libs/*/__pycache__/
 
 .hydra/
 output/

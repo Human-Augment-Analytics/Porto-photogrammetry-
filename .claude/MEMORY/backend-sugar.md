@@ -1,11 +1,11 @@
-# `src/sugar/` — SuGaR (Surface-Aligned Gaussians)
+# `src/libs/sugar/` — SuGaR (Surface-Aligned Gaussians)
 
 Extracts textured triangle meshes from 3DGS by regularising Gaussians onto an implicit surface,
 then binding them to an explicit mesh. Vendored in-tree (**not** a git submodule, despite older
 docs). Requires a pre-trained vanilla 3DGS checkpoint from
-`src/sugar/gaussian_splatting/train.py`; `pipeline/reconstruction/run_sugar.py` produces it.
+`src/libs/sugar/gaussian_splatting/train.py`; `pipeline/reconstruction/run_sugar.py` produces it.
 
-## Training pipeline (`src/sugar/train.py`, run from `src/sugar/`)
+## Training pipeline (`src/libs/sugar/train.py`, run from `src/libs/sugar/`)
 
 ```bash
 python train.py \
@@ -56,6 +56,6 @@ Embedded 3DGS is a standard implementation (`ModelParams`/`PipelineParams`/`Opti
 in `arguments/__init__.py`; COLMAP-vs-Blender auto-detection in `scene/__init__.py`):
 
 ```bash
-cd src/sugar
+cd src/libs/sugar
 python gaussian_splatting/train.py -s <scene_path> -m <model_output_path> [--iterations 7000]
 ```

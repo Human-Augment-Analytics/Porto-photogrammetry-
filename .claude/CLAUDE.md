@@ -69,5 +69,8 @@ README) is the install path. Details and knobs (`BACKENDS`, `SKIP_TETRA`, numpy<
 - `run_pgsr.py` flattens `sparse/0/` → `sparse/` because PGSR expects no `0/`.
 - COLMAP IDs are 1-indexed — `+1` offset from VGGT batch indices.
 - `src/pipeline/` is legacy first-generation code; use `pipeline/` for new work.
-- Only `src/light_glue`, `src/pytorch3d`, and `src/gaussian_wrapping/submodules/Depth-Anything-V2`
-  are git submodules — `src/sugar` and the other backends are vendored in-tree.
+- All third-party backends live under `src/libs/` (`2dgs`, `pgsr`, `sugar`,
+  `gaussian_wrapping`, `vggt`, `light_glue`, `pytorch3d`). First-party code is `pipeline/`
+  plus `src/pipeline/` (legacy) and `src/utils/`.
+- Only `src/libs/light_glue`, `src/libs/pytorch3d`, and `src/libs/gaussian_wrapping/submodules/Depth-Anything-V2`
+  are git submodules — `src/libs/sugar` and the other backends are vendored in-tree.

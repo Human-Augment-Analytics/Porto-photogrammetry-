@@ -390,12 +390,12 @@ fusedssim(
     CH,
     C1,
     C2,
-    img1.contiguous().data<float>(),
-    img2.contiguous().data<float>(),
-    target.contiguous().data<float>(),
-    dm_dmu1.contiguous().data<float>(),
-    dm_dsigma1_sq.contiguous().data<float>(),
-    dm_dsigma12.contiguous().data<float>()
+    img1.contiguous().data_ptr<float>(),
+    img2.contiguous().data_ptr<float>(),
+    target.contiguous().data_ptr<float>(),
+    dm_dmu1.contiguous().data_ptr<float>(),
+    dm_dsigma1_sq.contiguous().data_ptr<float>(),
+    dm_dsigma12.contiguous().data_ptr<float>()
   );
 
   return std::make_tuple(target, dm_dmu1, dm_dsigma1_sq, dm_dsigma12);
@@ -428,13 +428,13 @@ fusedssim_backward(
     CH,
     C1,
     C2,
-    img1.contiguous().data<float>(),
-    img2.contiguous().data<float>(),
-    dL_dmap.contiguous().data<float>(),
-    dL_dimg1.contiguous().data<float>(),
-    dm_dmu1.contiguous().data<float>(),
-    dm_dsigma1_sq.contiguous().data<float>(),
-    dm_dsigma12.contiguous().data<float>()
+    img1.contiguous().data_ptr<float>(),
+    img2.contiguous().data_ptr<float>(),
+    dL_dmap.contiguous().data_ptr<float>(),
+    dL_dimg1.contiguous().data_ptr<float>(),
+    dm_dmu1.contiguous().data_ptr<float>(),
+    dm_dsigma1_sq.contiguous().data_ptr<float>(),
+    dm_dsigma12.contiguous().data_ptr<float>()
   );
 
   return dL_dimg1;

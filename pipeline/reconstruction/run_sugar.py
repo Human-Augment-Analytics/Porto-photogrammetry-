@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SUGAR_DIR = REPO_ROOT / "src" / "sugar"
+SUGAR_DIR = REPO_ROOT / "src" / "libs" / "sugar"
 GS_TRAIN_SCRIPT = SUGAR_DIR / "gaussian_splatting" / "train.py"
 SUGAR_TRAIN_SCRIPT = SUGAR_DIR / "train.py"
 

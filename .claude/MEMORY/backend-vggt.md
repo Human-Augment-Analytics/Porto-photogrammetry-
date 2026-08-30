@@ -1,10 +1,10 @@
-# `src/vggt/` — VGGT Model
+# `src/libs/vggt/` — VGGT Model
 
 Meta's Visual Geometry Grounded Transformer. Weights (~4 GB) auto-download from
 `facebook/VGGT-1B` on HuggingFace on first run. Vendored in-tree (not a git submodule);
-installed editable from `src/vggt` (package root), importable package is `src/vggt/vggt/`.
+installed editable from `src/libs/vggt` (package root), importable package is `src/libs/vggt/vggt/`.
 
-## Model architecture (`src/vggt/vggt/models/`)
+## Model architecture (`src/libs/vggt/vggt/models/`)
 
 **`vggt.py` — VGGT class**
 - Input: images `[B, S, 3, H, W]` in `[0, 1]`, optional query points `[B, N, 2]`
@@ -23,7 +23,7 @@ installed editable from `src/vggt` (package root), importable package is `src/vg
 - Outputs concatenated frame+global intermediates `[B, S, P, 2*C]` (2048-dim) per block pair
 - Gradient checkpointing enabled during training
 
-## Utilities (`src/vggt/vggt/utils/`)
+## Utilities (`src/libs/vggt/vggt/utils/`)
 
 **`load_fn.py`**
 - `load_and_preprocess_images_square()` — main pipeline loader. Square-pads to `max(W,H)`,
@@ -46,7 +46,7 @@ installed editable from `src/vggt` (package root), importable package is `src/vg
 - `randomly_limit_trues()` — subsample True entries of a boolean mask to a budget
 - `create_pixel_coordinate_grid()` — `[S, H, W, 3]` grid of (x, y, frame_idx)
 
-## COLMAP conversion (`src/vggt/vggt/dependency/np_to_pycolmap.py`)
+## COLMAP conversion (`src/libs/vggt/vggt/dependency/np_to_pycolmap.py`)
 
 - `batch_np_matrix_to_pycolmap()` — full conversion **with** tracks, used with BA. Applies
   reprojection-error filtering, builds proper Point2D↔Point3D associations.

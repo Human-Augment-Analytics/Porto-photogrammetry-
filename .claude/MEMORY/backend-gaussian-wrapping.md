@@ -1,4 +1,4 @@
-# `src/gaussian_wrapping/` — Gaussian Wrapping ("Blobs to Spokes")
+# `src/libs/gaussian_wrapping/` — Gaussian Wrapping ("Blobs to Spokes")
 
 Watertight, textured surface meshes by treating 3D Gaussians as stochastic oriented surface
 elements (Gomez et al., 2026, arXiv:2604.07337). Rasterizer backends: `ours` (median-depth),
@@ -6,7 +6,7 @@ elements (Gomez et al., 2026, arXiv:2604.07337). Rasterizer backends: `ours` (me
 `--rasterizer ours` + `--sdf_mode ours`.
 
 > **Layout:** internal modules import as `from scene.gaussian_model import ...` — i.e.
-> `src/gaussian_wrapping/` is the package root. `run_gw.py` calls each script by absolute path
+> `src/libs/gaussian_wrapping/` is the package root. `run_gw.py` calls each script by absolute path
 > with **no `cwd`**; Python prepends the script's own directory to `sys.path`, so the imports
 > resolve.
 

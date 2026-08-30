@@ -17,6 +17,13 @@
 #include <cub/cub.cuh>
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+// CUB 3.0 (CUDA 13) removed cub::Max; cuda::maximum is the replacement.
+#if CUB_VERSION >= 300000
+#include <cuda/functional>
+#define GW_CUB_MAX cuda::maximum<>{}
+#else
+#define GW_CUB_MAX cub::Max()
+#endif
 
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -455,7 +462,7 @@ renderCUDA(
 	// max reduce the last contributor
     typedef cub::BlockReduce<uint32_t, BLOCK_X, cub::BLOCK_REDUCE_WARP_REDUCTIONS, BLOCK_Y> BlockReduce;
     __shared__ typename BlockReduce::TempStorage temp_storage;
-    last_contributor = BlockReduce(temp_storage).Reduce(last_contributor, cub::Max());
+    last_contributor = BlockReduce(temp_storage).Reduce(last_contributor, GW_CUB_MAX);
 	if (block.thread_rank() == 0) {
 		max_contrib[tile_id] = last_contributor;
 	}	

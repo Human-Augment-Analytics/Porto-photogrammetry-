@@ -82,27 +82,27 @@ python -m pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-is
 
 # Install CUDA submodules and local packages
 python -m pip install \
-    src/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization \
-    src/sugar/gaussian_splatting/submodules/simple-knn \
-    src/light_glue \
-    src/pytorch3d \
-    src/2dgs/submodules/diff-surfel-rasterization \
-    src/pgsr/submodules/diff-plane-rasterization \
-    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
-    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
-    src/gaussian_wrapping/submodules/fused-ssim \
-    src/gaussian_wrapping/submodules/warp-patch-ncc \
+    src/libs/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization \
+    src/libs/sugar/gaussian_splatting/submodules/simple-knn \
+    src/libs/light_glue \
+    src/libs/pytorch3d \
+    src/libs/2dgs/submodules/diff-surfel-rasterization \
+    src/libs/pgsr/submodules/diff-plane-rasterization \
+    src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
+    src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
+    src/libs/gaussian_wrapping/submodules/fused-ssim \
+    src/libs/gaussian_wrapping/submodules/warp-patch-ncc \
     --no-build-isolation
 
 # Install VGGT as editable package
-python -m pip install -e src/vggt --no-build-isolation
+python -m pip install -e src/libs/vggt --no-build-isolation
 
 # Build and install Tetra-NeRF triangulation module
 export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH
 conda install -y cmake
 conda install -y conda-forge::gmp
 conda install -y conda-forge::cgal
-cd src/gaussian_wrapping/submodules/tetra_triangulation
+cd src/libs/gaussian_wrapping/submodules/tetra_triangulation
 cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCGAL_DIR=$CONDA_PREFIX/lib/cmake/CGAL \
         -DTorch_DIR=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'share/cmake/Torch'))") \
@@ -131,35 +131,38 @@ augenblick/
 │       ├── run_pgsr.py
 │       └── run_gw.py
 ├── src/
-│   ├── vggt/                  # VGGT model (Meta)
-│   │   └── vggt/              #   Importable Python package
-│   │       ├── models/        #     VGGT, Aggregator
-│   │       ├── heads/         #     Camera, depth, point, track heads
-│   │       ├── layers/        #     Attention, RoPE, patch embedding
-│   │       ├── utils/         #     Loading, pose encoding, geometry
-│   │       └── dependency/    #     COLMAP conversion, tracking
-│   ├── sugar/                 # SuGaR (submodule)
-│   │   ├── gaussian_splatting/#   Embedded vanilla 3DGS
-│   │   ├── sugar_trainers/    #   Coarse + refined training
-│   │   ├── sugar_extractors/  #   Mesh extraction
-│   │   └── sugar_scene/       #   SuGaR model definition
-│   ├── 2dgs/                  # 2D Gaussian Splatting
-│   │   ├── gaussian_renderer/ #   Surfel rasterizer
-│   │   ├── scene/             #   Scene + Gaussian model
-│   │   └── utils/             #   Mesh extraction (TSDF + marching cubes)
-│   ├── pgsr/                  # PGSR
-│   │   ├── gaussian_renderer/ #   Plane rasterizer
-│   │   ├── scene/             #   Scene + Gaussian + AppModel
-│   │   └── utils/             #   Loss functions, graphics
-│   ├── gaussian_wrapping/     # Gaussian Wrapping (Blobs to Spokes)
-│   │   ├── gaussian_renderer/ #   ours/radegs/sof rasterizers
-│   │   ├── extraction/        #   Pivot sampling + mesh extraction
-│   │   ├── regularization/    #   Normal-field, multiview, MILo, SDF
-│   │   ├── scene/             #   Scene + GaussianModel + Mesh
-│   │   ├── scripts/           #   End-to-end driver scripts
-│   │   └── submodules/        #   CUDA rasterizers + tetra triangulation
-│   ├── light_glue/            # LightGlue (submodule)
-│   └── pytorch3d/             # PyTorch3D (submodule)
+│   ├── libs/                  # Third-party backends (vendored + submodules)
+│   │   ├── vggt/              # VGGT model (Meta)
+│   │   │   └── vggt/          #   Importable Python package
+│   │   │       ├── models/    #     VGGT, Aggregator
+│   │   │       ├── heads/     #     Camera, depth, point, track heads
+│   │   │       ├── layers/    #     Attention, RoPE, patch embedding
+│   │   │       ├── utils/     #     Loading, pose encoding, geometry
+│   │   │       └── dependency/#     COLMAP conversion, tracking
+│   │   ├── sugar/             # SuGaR (vendored)
+│   │   │   ├── gaussian_splatting/ # Embedded vanilla 3DGS
+│   │   │   ├── sugar_trainers/     # Coarse + refined training
+│   │   │   ├── sugar_extractors/   # Mesh extraction
+│   │   │   └── sugar_scene/        # SuGaR model definition
+│   │   ├── 2dgs/              # 2D Gaussian Splatting
+│   │   │   ├── gaussian_renderer/  # Surfel rasterizer
+│   │   │   ├── scene/              # Scene + Gaussian model
+│   │   │   └── utils/              # Mesh extraction (TSDF + marching cubes)
+│   │   ├── pgsr/              # PGSR
+│   │   │   ├── gaussian_renderer/  # Plane rasterizer
+│   │   │   ├── scene/              # Scene + Gaussian + AppModel
+│   │   │   └── utils/              # Loss functions, graphics
+│   │   ├── gaussian_wrapping/ # Gaussian Wrapping (Blobs to Spokes)
+│   │   │   ├── gaussian_renderer/  # ours/radegs/sof rasterizers
+│   │   │   ├── extraction/         # Pivot sampling + mesh extraction
+│   │   │   ├── regularization/     # Normal-field, multiview, MILo, SDF
+│   │   │   ├── scene/              # Scene + GaussianModel + Mesh
+│   │   │   ├── scripts/            # End-to-end driver scripts
+│   │   │   └── submodules/         # CUDA rasterizers + tetra triangulation
+│   │   ├── light_glue/        # LightGlue (submodule)
+│   │   └── pytorch3d/         # PyTorch3D (submodule)
+│   ├── pipeline/              # Legacy first-generation pipeline
+│   └── utils/
 ├── scripts/                   # Per-GPU environment installers
 └── .claude/
     ├── CLAUDE.md              # Agent orientation (succinct)

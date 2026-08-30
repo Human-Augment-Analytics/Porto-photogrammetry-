@@ -49,16 +49,16 @@ compute capability.
 ### Manual setup
 
 The manual pip sequence the scripts wrap is in [README.md](../../README.md) ("Manual setup").
-VGGT is installed editable from `src/vggt` (the package root with `pyproject.toml`; the
-importable package is the inner `src/vggt/vggt/`). An old editable install made from `src/`
-must be redone from `src/vggt`.
+VGGT is installed editable from `src/libs/vggt` (the package root with `pyproject.toml`; the
+importable package is the inner `src/libs/vggt/vggt/`). An old editable install made from `src/`
+must be redone from `src/libs/vggt`.
 
 ## Submodules
 
-`.gitmodules` lists exactly three: `src/light_glue`, `src/pytorch3d`,
-`src/gaussian_wrapping/submodules/Depth-Anything-V2`.
-**`src/sugar` is not a submodule** (older docs claimed it was); it is vendored in-tree, as are
-`src/2dgs`, `src/pgsr`, `src/gaussian_wrapping`, `src/vggt`.
+`.gitmodules` lists exactly three: `src/libs/light_glue`, `src/libs/pytorch3d`,
+`src/libs/gaussian_wrapping/submodules/Depth-Anything-V2`.
+**`src/libs/sugar` is not a submodule** (older docs claimed it was); it is vendored in-tree, as are
+`src/libs/2dgs`, `src/libs/pgsr`, `src/libs/gaussian_wrapping`, `src/libs/vggt`.
 
 ## GPU notes
 

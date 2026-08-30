@@ -1,4 +1,4 @@
-# `src/2dgs/` — 2D Gaussian Splatting
+# `src/libs/2dgs/` — 2D Gaussian Splatting
 
 2D surfel primitives instead of 3D Gaussians for better surface geometry. Custom CUDA rasterizer
 `diff-surfel-rasterization` under `submodules/`.
@@ -6,7 +6,7 @@
 ## Training
 
 ```bash
-cd src/2dgs
+cd src/libs/2dgs
 python train.py -s <scene_path> -m <model_output_path> \
     [--iterations 30000] [--test_iterations 7000 30000] [--save_iterations 7000 30000]
 ```
@@ -26,7 +26,7 @@ Differences from vanilla 3DGS:
 ## Rendering + mesh extraction
 
 ```bash
-cd src/2dgs
+cd src/libs/2dgs
 python render.py -m <model_path> \
     [--iteration -1] [--skip_train] [--skip_test] [--skip_mesh] \
     [--voxel_size -1.0]   \  # auto if negative

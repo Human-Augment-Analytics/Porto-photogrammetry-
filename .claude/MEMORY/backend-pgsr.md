@@ -1,4 +1,4 @@
-# `src/pgsr/` — PGSR (Planar-based Gaussian Splatting Reconstruction)
+# `src/libs/pgsr/` — PGSR (Planar-based Gaussian Splatting Reconstruction)
 
 3DGS extended with planar Gaussian primitives. Custom CUDA rasterizer
 `diff-plane-rasterization` under `submodules/`.
@@ -6,7 +6,7 @@
 ## Training
 
 ```bash
-cd src/pgsr
+cd src/libs/pgsr
 python train.py -s <scene_path> -m <model_output_path> \
     [--iterations 30000] [--test_iterations 7000 30000] [--save_iterations 7000 30000]
 ```
@@ -27,7 +27,7 @@ Differences from vanilla 3DGS:
 ## Rendering + mesh extraction
 
 ```bash
-cd src/pgsr
+cd src/libs/pgsr
 python render.py -m <model_path> \
     [--iteration -1] [--skip_train] [--skip_test] \
     [--max_depth 5.0] [--voxel_size 0.002] [--num_cluster 1] [--use_depth_filter]

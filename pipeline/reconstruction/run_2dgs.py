@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TWODGS_DIR = REPO_ROOT / "src" / "2dgs"
+TWODGS_DIR = REPO_ROOT / "src" / "libs" / "2dgs"
 TRAIN_SCRIPT = TWODGS_DIR / "train.py"
 RENDER_SCRIPT = TWODGS_DIR / "render.py"
 

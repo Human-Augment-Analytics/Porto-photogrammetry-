@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-GW_DIR = REPO_ROOT / "src" / "gaussian_wrapping"
+GW_DIR = REPO_ROOT / "src" / "libs" / "gaussian_wrapping"
 TRAIN_SCRIPT = GW_DIR / "train.py"
 EXTRACT_SCRIPT = GW_DIR / "pivot_based_mesh_extraction.py"
 TEXTURE_SCRIPT = GW_DIR / "texture_mesh.py"
