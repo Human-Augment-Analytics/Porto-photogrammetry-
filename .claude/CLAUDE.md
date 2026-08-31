@@ -8,6 +8,17 @@ internals, parameter tables, algorithm walk-throughs — lives in `.claude/MEMOR
 document something new, put the detail in the matching MEMORY file (or add one and index it
 below); only add to CLAUDE.md if it changes how the repo is invoked or navigated.
 
+**`.claude/MEMORY/` is the durable record of how this repo works.** When you learn something
+about it that would still be true next session and is not already obvious from the code — a
+non-obvious flag interaction, a backend quirk, a path that must match elsewhere, a trap that
+cost real debugging time — offer to write it to the matching MEMORY file. Verify it before
+writing, and say what you verified it against. These files are committed, so propose the edit
+rather than making it silently, and keep the entry to the shortest form that stays useful.
+
+Not everything belongs here: one-off session state, personal preferences, and anything the code
+or git history already records stay out. A fact about *the repo* goes in `MEMORY/`; a fact about
+*how the user works* is Claude's own per-user memory and never lands in this tree.
+
 ## MEMORY index
 
 | File | Contents |
