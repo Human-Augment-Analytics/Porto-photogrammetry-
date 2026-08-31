@@ -1,9 +1,10 @@
 #!/bin/bash
-# VGGT -> COLMAP for every scene under DATA_ROOT, one array task per scene.
-# Usage: sbatch slurm/vggt_sfm.sbatch [extra flags]
-# Single scene: sbatch --array=N slurm/vggt_sfm.sbatch   (N = index in the sorted scene list)
+# VGGT + bundle adjustment -> COLMAP for every scene under DATA_ROOT, one array task per scene.
+# Writes to all/vggt_ba so it does not collide with the non-BA job's all/vggt.
+# Usage: sbatch slurm/vggt_ba_sfm.sbatch [extra flags]
+# Single scene: sbatch --array=N slurm/vggt_ba_sfm.sbatch   (N = index in the sorted scene list)
 # Large scenes want >=80GB VRAM; prefer GPU=b200 --partition=hpg-b200 for those.
-#SBATCH --job-name=vggt-sfm
+#SBATCH --job-name=vggt-ba-sfm
 #SBATCH --account=arthur.porto
 #SBATCH --partition=hpg-rtx6000
 #SBATCH --nodes=1
@@ -49,7 +50,7 @@ fi
 
 SCENE_NAME="${SCENES[$IDX]}"
 SCENE="$DATA_ROOT/$SCENE_NAME/prepared"
-OUT="$RESULT_ROOT/$SCENE_NAME/all/vggt"
+OUT="$RESULT_ROOT/$SCENE_NAME/all/vggt_ba"
 mkdir -p "$OUT"
 
 echo "scene      : $SCENE_NAME ($IDX of ${#SCENES[@]}) -> $OUT"
