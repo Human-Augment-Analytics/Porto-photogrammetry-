@@ -11,7 +11,7 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus=1
-#SBATCH --mem=64gb
+#SBATCH --mem=24gb
 #SBATCH --time=2:00:00
 #SBATCH --array=0-5
 #SBATCH --output=slurm/logs/%x-%A_%a.out
