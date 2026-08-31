@@ -32,7 +32,7 @@ def order_key(name):
 
 
 def Rt(image):
-    T = image.cam_from_world.matrix()
+    T = image.cam_from_world().matrix()
     return T[:, :3], T[:, 3]
 
 
@@ -173,8 +173,9 @@ def apply_track_preserving(rec, poses, regex, max_reproj=None, min_track=3, max_
         im = rec.images[iid]
         R, C = poses[im.name]
         q = Rot.from_matrix(R).as_quat()
-        im.cam_from_world = pycolmap.Rigid3d(
-            pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C)
+        im.frame.set_cam_from_world(
+            im.camera_id,
+            pycolmap.Rigid3d(pycolmap.Rotation3d([q[0], q[1], q[2], q[3]]), -R @ C))
     for pid in to_delete:
         rec.delete_point3D(pid)
 
