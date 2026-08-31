@@ -27,6 +27,10 @@ below); only add to CLAUDE.md if it changes how the repo is invoked or navigated
 | [cluster-slurm.md](MEMORY/cluster-slurm.md) | SLURM job scripts, partitions/accounts, GPU switch, batch-env gotchas |
 | [augenblick-package.md](MEMORY/augenblick-package.md) | The `src/augenblick` package: ABCs, registry, config bridge, CLI, adding a backend |
 
+`.claude/PLANS/` holds implementation specs for landed refactors — the reasoning and constraints
+behind a change, kept as a record of *why* the tree looks as it does. They are historical: where
+a plan and the code disagree, the code wins. See [repo-conventions.md](MEMORY/repo-conventions.md).
+
 ## Project overview
 
 **Augenblick** is a two-stage photogrammetry pipeline producing 3D meshes from multi-view
@@ -75,10 +79,8 @@ stale `build/` dirs): [environment-and-gpu.md](MEMORY/environment-and-gpu.md).
   the generation must match the GPU's torch wheel or imports break at runtime, not at install.
 - `download_morphosource_project.py` defaults to a **seeded 3-specimen sample** (~3.2 GB), not the
   whole 869 GB project; `--dry-run` costs nothing and needs no API key.
-- `src/pipeline/` is legacy first-generation code; use `pipeline/` for new work.
 - All third-party backends live under `src/libs/` (`2dgs`, `pgsr`, `sugar`,
   `gaussian_wrapping`, `vggt`, `light_glue`, `pytorch3d`). First-party code is
-  `src/augenblick/` (the package) and `pipeline/preparation/`, plus `src/pipeline/` (legacy)
-  and `src/utils/`.
+  `src/augenblick/` (the package), `pipeline/preparation/`, and `src/utils/`.
 - Only `src/libs/light_glue`, `src/libs/pytorch3d`, and `src/libs/gaussian_wrapping/submodules/Depth-Anything-V2`
   are git submodules — `src/libs/sugar` and the other backends are vendored in-tree.

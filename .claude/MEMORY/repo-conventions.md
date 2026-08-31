@@ -11,6 +11,22 @@ When adding documentation: put the detail in the right `MEMORY/` file (or add a 
 index it in CLAUDE.md); add to CLAUDE.md itself only if it changes how someone invokes or
 navigates the repo.
 
+## `.claude/PLANS/`
+
+Implementation specs for large refactors, committed once the work lands. They record the
+constraints, the verification steps, and the reasoning behind a change — the things a diff does
+not preserve. `MEMORY/` describes the tree as it *is*; `PLANS/` describes how it got that way.
+
+- **Plans are historical, not authoritative.** Where a plan contradicts the code, the code wins.
+  A landed plan is not updated to track later drift; the matching `MEMORY/` file is.
+- Commit a plan when its work lands, in the same commit or right after. A plan for work that was
+  abandoned does not get committed.
+- Paths inside a committed plan will go stale as the tree moves. That is expected and is not a
+  reason to rewrite it — the file is a record of a decision made at a point in time.
+
+Landed: `augenblick-package-architecture.md` (the `src/augenblick` package and CLI),
+`move-backends-to-src-libs.md` (relocating third-party backends under `src/libs/`).
+
 ## Code comment and docstring style
 
 Comments are **one line, at most 20 words**, and state only the *purpose* of the code below
@@ -34,21 +50,24 @@ src/augenblick/ The pipeline package and its `augenblick` CLI
 baseline/       Meshroom wrapper
 scripts/        Per-GPU installers (auto_setup.sh + setup_{l40s,a100,h100,b200,common}.sh)
 constraints/    numpy-generation pip pins (numpy1.txt, numpy2.txt), selected by NUMPY_GENERATION
-src/            Backends: vggt/, sugar/, 2dgs/, pgsr/, gaussian_wrapping/, light_glue/, pytorch3d/
+src/libs/       Backends: vggt/, sugar/, 2dgs/, pgsr/, gaussian_wrapping/, light_glue/, pytorch3d/
+src/utils/      Standalone helpers (visual_util.py)
+slurm/          Cluster job scripts (see cluster-slurm.md)
+tests/          Package unit tests
 assets/         README result grids
+.claude/        CLAUDE.md orientation, MEMORY/ topic docs, PLANS/ landed refactor specs
 data/, output/  Local scene data and run outputs (not for commit)
 ```
 
 ## Legacy / non-canonical code
 
-- **`src/pipeline/`** — superseded first-generation scripts (`run_vggt.py`,
-  `vggt_to_colmap.py`, `new_vggt_converter.py`, `quick_fix.py`, `run_sugar_pipeline.py`,
-  `vggt_to_ingp.py`, `vggt_to_neus2.py`, `example_usage.py`, `conversion_utils.py`). Use
-  `pipeline/` for new experiments. `vggt_to_neus2.py` / `vggt_to_ingp.py` are the only place
-  the NeuS2 / instant-ngp exports live.
+- **`src/pipeline/`** — the first-generation scripts (`run_vggt.py`, `vggt_to_colmap.py`,
+  `run_sugar_pipeline.py`, the NeuS2 / instant-ngp exporters, and their helpers) were deleted
+  in `ba6d228`. `src/augenblick/` supersedes them; recover anything still needed from git
+  history. No NeuS2 or instant-ngp export ships in the tree today.
 - **`src/utils/visual_util.py`** — standalone visualisation helper.
-- Untracked scratch in the repo root (`commands.md`, `install_commands.md`, `notebooks/`) is
-  personal working material, not part of the documented pipeline.
+- Untracked markdown and scratch directories in the repo root are personal working material,
+  not part of the documented pipeline. Keep them out of commits.
 
 ## Naming and ID conventions
 

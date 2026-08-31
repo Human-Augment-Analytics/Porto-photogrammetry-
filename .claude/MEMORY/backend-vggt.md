@@ -59,7 +59,5 @@ installed editable from `src/libs/vggt` (package root), importable package is `s
 - **VGGT outputs**: OpenCV convention (x-right, y-down, z-forward), camera-from-world `[R|t]`.
 - **Intrinsics**: initially in 518x518 pixel space; `augenblick.sfm.vggt` rescales them to the
   original image resolution via `rename_colmap_recons_and_rescale_camera()`.
-- **NeuS2 export** (legacy `src/pipeline/vggt_to_neus2.py`): applies a 180° x-rotation for the
-  NeRF convention (y-up, z-backward).
 - **COLMAP IDs are 1-indexed** — there is a `+1` offset between batch index and COLMAP
   image/camera ID throughout.
