@@ -209,9 +209,12 @@ class VGGTSfM(SfMMethod):
             torch.cuda.manual_seed_all(args.seed)  # for multi-GPU
         logger.info(f"Setting seed as: {args.seed}")
 
-        # Set device and dtype
-        dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+        # Set device and dtype; the capability query itself needs a CUDA device.
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        if device == "cuda":
+            dtype = torch.bfloat16 if torch.cuda.get_device_capability()[0] >= 8 else torch.float16
+        else:
+            dtype = torch.float32
         logger.info(f"Using device: {device}")
         logger.info(f"Using dtype: {dtype}")
 
@@ -239,8 +242,7 @@ class VGGTSfM(SfMMethod):
             if args.use_masks:
                 mask_path_list = []
                 for base_image_path in base_image_path_list:
-                    prefix = base_image_path.split(".")[0]
-                    mask_path = os.path.join(mask_dir, f"{prefix}.png")
+                    mask_path = os.path.join(mask_dir, f"{Path(base_image_path).stem}.png")
                     if os.path.exists(mask_path):
                         mask_path_list.append(mask_path)
                     else:

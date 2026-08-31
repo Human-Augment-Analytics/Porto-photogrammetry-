@@ -24,6 +24,7 @@ import augenblick.sfm  # noqa: E402,F401
 def _add_stage_parser(subparsers, stage: str, registry: dict[str, type], help_text: str):
     """Build the parser for one stage, with a per-method subparser drawn from the registry."""
     parser = subparsers.add_parser(stage, help=help_text)
+    parser.set_defaults(stage_parser=parser)
     parser.add_argument("--list", action="store_true", help="List available methods and exit")
     method_subs = parser.add_subparsers(dest="method")
     for name, cls in sorted(registry.items()):
@@ -76,7 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     if getattr(args, "list", False):
         return _list_methods(registry)
     if args.method is None:
-        parser.parse_args([args.stage, "--help"], argv)
+        args.stage_parser.print_help()
         return 2
 
     try:

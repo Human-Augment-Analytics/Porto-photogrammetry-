@@ -54,20 +54,20 @@ banner "Submodules"
 git submodule update --init src/libs/light_glue src/libs/pytorch3d
 
 # --- 1. PyTorch (arch-specific wheel index) -----------------------------------
-banner "1/7 PyTorch"
+banner "1/8 PyTorch"
 $PIP install $TORCH_SPEC --index-url "$TORCH_INDEX_URL"
 
 # --- 2. PyPI dependencies (repo requirements.txt) -----------------------------
-banner "2/7 requirements.txt"
+banner "2/8 requirements.txt"
 $PIP install -r requirements.txt
 
 # --- 3. Editable source packages: VGGT + LightGlue ----------------------------
-banner "3/7 VGGT + LightGlue (editable)"
+banner "3/8 VGGT + LightGlue (editable)"
 $PIP install -e src/libs/vggt       --no-build-isolation
 $PIP install -e src/libs/light_glue --no-build-isolation
 
 # --- 4. pytorch3d (source build, arch-agnostic; or prebuilt wheel) ------------
-banner "4/7 pytorch3d"
+banner "4/8 pytorch3d"
 if [ -n "${PYTORCH3D_WHEEL:-}" ]; then
     $PIP install fvcore iopath
     $PIP install --no-index --no-cache-dir pytorch3d -f "$PYTORCH3D_WHEEL"
@@ -76,12 +76,12 @@ else
 fi
 
 # --- 5. nvdiffrast (SuGaR texture export + GW mesh rasterisation) -------------
-banner "5/7 nvdiffrast"
+banner "5/8 nvdiffrast"
 $PIP install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation || \
     echo "WARN: nvdiffrast install failed (texture export will fall back)."
 
 # --- 6. Per-backend CUDA rasterizers (compiled at sm_$GPU_ARCH) ---------------
-banner "6/7 Backend CUDA rasterizers"
+banner "6/8 Backend CUDA rasterizers"
 # Clean any stale build/ first: leftover object files from an earlier build
 # (e.g. a different GPU arch) are reused and silently ignore TORCH_CUDA_ARCH_LIST.
 # NOTE: do not run two setups against the SAME checkout concurrently — they race
@@ -117,7 +117,7 @@ case " $BACKENDS " in *" gw "*)
     if [ "$SKIP_TETRA" = "1" ]; then
         echo "Skipping tetra_triangulation (SKIP_TETRA=1)."
     else
-        banner "7/7 tetra_triangulation (CGAL)"
+        banner "7/8 tetra_triangulation (CGAL)"
         CONDA="${CONDA_EXE:-conda}"
         if have "$CONDA"; then
             "$CONDA" install -y cmake || true
@@ -137,6 +137,10 @@ case " $BACKENDS " in *" gw "*)
     fi
     ;;
 esac
+
+# --- 8. The augenblick package itself (the `augenblick` console script) -------
+banner "8/8 augenblick (editable)"
+$PIP install -e . --no-deps --no-build-isolation
 
 # --- Verify -------------------------------------------------------------------
 banner "Verifying imports"
@@ -158,6 +162,7 @@ except Exception as e:
     print(f"FAIL: torch.from_numpy | {type(e).__name__}: {e}")
 
 checks = {
+    "augenblick": "augenblick (CLI package)",
     "scipy.spatial": "scipy", "sklearn": "scikit-learn", "skimage": "scikit-image",
     "pycolmap": "pycolmap", "open3d": "open3d", "vggt": "vggt", "pytorch3d": "pytorch3d",
     "trimesh": "trimesh",
@@ -173,6 +178,8 @@ for mod, label in checks.items():
 print("OK   :", ", ".join(ok) or "none")
 print("MISS :", " | ".join(miss) or "none (all good)")
 PY
+
+have augenblick || echo "WARN: the 'augenblick' console script is not on PATH"
 
 banner "Done — $GPU_LABEL environment ready"
 echo "Note: GPU import checks only validate the arch of the node you ran on."

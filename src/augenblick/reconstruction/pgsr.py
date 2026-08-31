@@ -79,8 +79,8 @@ class PgsrBackend(SubprocessBackend):
         logger.info(f"Copying scene from {scene_dir} to {pgsr_scene}")
         for subdir in ["images", "masks", "sparse"]:
             src = scene_dir / subdir
-            dst = pgsr_scene / subdir
-            shutil.copytree(src, dst)
+            if src.is_dir():
+                shutil.copytree(src, pgsr_scene / subdir)
 
         sparse_0 = pgsr_scene / "sparse" / "0"
         sparse = pgsr_scene / "sparse"

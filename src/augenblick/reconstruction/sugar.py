@@ -59,6 +59,11 @@ class SugarBackend(SubprocessBackend):
         super().__init__(config)
         self._scene_name = ""
 
+    def prepare(self, scene: Scene, output_dir: Path) -> Scene:
+        """Record the scene name before any stage runs; the scene is unchanged."""
+        self._scene_name = scene.root.name
+        return scene
+
     def stages(self, scene: Scene, output_dir: Path) -> list[Stage]:
         """Build the 3DGS and SuGaR invocations; SuGaR takes booleans as string arguments."""
         c = self.config
@@ -111,6 +116,10 @@ class SugarBackend(SubprocessBackend):
 
     def mesh_path(self, output_dir: Path) -> Path:
         """Refined-mesh directory; upstream names it after the scene dir, not the output dir."""
+        if not self._scene_name:
+            raise RuntimeError(
+                "SuGaR's mesh path is named after the scene directory; "
+                "call prepare() or stages() with the scene before mesh_path()")
         return output_dir / "sugar" / "refined_mesh" / self._scene_name
 
     def footer(self, output_dir: Path) -> dict[str, object]:
