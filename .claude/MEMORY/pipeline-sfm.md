@@ -19,7 +19,7 @@ augenblick sfm vggt \
     --input_dir <dir>            \  # must contain images/
     --output_dir <dir>           \
     [--use_masks] [--seed 42]    \
-    [--conf_thres_value 1.0]     \  # depth-confidence threshold, no-BA mode
+    [--conf_thres_value 2.0]     \  # depth-confidence threshold, no-BA mode
     [--use_ba]                   \  # VGGSfM tracker + pycolmap BA
     [--shared_camera] [--camera_type SIMPLE_PINHOLE] \
     [--max_reproj_error 8.0] [--vis_thresh 0.2] \

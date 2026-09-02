@@ -48,7 +48,7 @@ class VGGTConfig:
     max_query_pts: int = field(default=4096, metadata={"help": "Maximum number of query points"})
     fine_tracking: bool = field(default=True, metadata={
         "help": "Use fine tracking (slower but more accurate)"})
-    conf_thres_value: float = field(default=1.0, metadata={
+    conf_thres_value: float = field(default=2.0, metadata={
         "help": "Confidence threshold value for depth filtering (wo BA)"})
 
 
