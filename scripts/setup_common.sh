@@ -1,6 +1,7 @@
 #!/bin/bash
 # Shared installer behind the per-GPU wrappers (setup_l40s/a100/b200.sh, auto_setup.sh).
-# Wrappers must export: GPU_LABEL, GPU_ARCH, CUDA_MODULE, TORCH_SPEC, TORCH_INDEX_URL.
+# Wrappers must export: GPU_LABEL, GPU_ARCH, CUDA_MODULE, TORCH_SPEC, TORCH_INDEX_URL,
+# NUMPY_GENERATION (1 or 2, matching the torch wheel's numpy C-ABI).
 # Optional: BACKENDS (default "sugar 2dgs pgsr gw"), SKIP_TETRA=1, PYTORCH3D_WHEEL=<url>.
 set -euo pipefail
 
@@ -9,6 +10,7 @@ set -euo pipefail
 : "${CUDA_MODULE:?set by wrapper}"
 : "${TORCH_SPEC:?set by wrapper}"
 : "${TORCH_INDEX_URL:?set by wrapper}"
+: "${NUMPY_GENERATION:?set by wrapper}"
 BACKENDS="${BACKENDS:-sugar 2dgs pgsr gw}"
 SKIP_TETRA="${SKIP_TETRA:-0}"
 
@@ -40,45 +42,46 @@ echo "python:      $(python --version) @ $(command -v python)"
 [ "$PYV" = "3.10" ] || echo "WARN: Python $PYV (repo targets 3.10)."
 PIP="python -m pip"
 
-# numpy 2.x breaks the repo's pinned scipy/scikit-learn (C-ABI mismatch). Pin <2
-# globally so no transitive dep (torch, fvcore, ...) silently pulls numpy 2.x.
-NUMPY_CONSTRAINT="$(mktemp)"; echo "numpy<2" > "$NUMPY_CONSTRAINT"
-export PIP_CONSTRAINT="$NUMPY_CONSTRAINT"
-trap 'rm -f "$NUMPY_CONSTRAINT"' EXIT
+# torch and scipy/scikit-* must agree on the numpy C-ABI, so the wrapper's torch
+# wheel picks the constraint file; applied globally to catch transitive upgrades.
+CONSTRAINTS="$REPO_ROOT/constraints/numpy${NUMPY_GENERATION}.txt"
+[ -f "$CONSTRAINTS" ] || { echo "ERROR: no constraints file $CONSTRAINTS"; exit 1; }
+export PIP_CONSTRAINT="$CONSTRAINTS"
+echo "Constraints: $CONSTRAINTS"
 
 # --- Submodules (light_glue + pytorch3d are git submodules) -------------------
 banner "Submodules"
-git submodule update --init src/light_glue src/pytorch3d
+git submodule update --init src/libs/light_glue src/libs/pytorch3d
 
 # --- 1. PyTorch (arch-specific wheel index) -----------------------------------
-banner "1/7 PyTorch"
+banner "1/8 PyTorch"
 $PIP install $TORCH_SPEC --index-url "$TORCH_INDEX_URL"
 
 # --- 2. PyPI dependencies (repo requirements.txt) -----------------------------
-banner "2/7 requirements.txt"
+banner "2/8 requirements.txt"
 $PIP install -r requirements.txt
 
 # --- 3. Editable source packages: VGGT + LightGlue ----------------------------
-banner "3/7 VGGT + LightGlue (editable)"
-$PIP install -e src/vggt       --no-build-isolation
-$PIP install -e src/light_glue --no-build-isolation
+banner "3/8 VGGT + LightGlue (editable)"
+$PIP install -e src/libs/vggt       --no-build-isolation
+$PIP install -e src/libs/light_glue --no-build-isolation
 
 # --- 4. pytorch3d (source build, arch-agnostic; or prebuilt wheel) ------------
-banner "4/7 pytorch3d"
+banner "4/8 pytorch3d"
 if [ -n "${PYTORCH3D_WHEEL:-}" ]; then
     $PIP install fvcore iopath
     $PIP install --no-index --no-cache-dir pytorch3d -f "$PYTORCH3D_WHEEL"
 else
-    $PIP install -e src/pytorch3d --no-build-isolation
+    $PIP install -e src/libs/pytorch3d --no-build-isolation
 fi
 
 # --- 5. nvdiffrast (SuGaR texture export + GW mesh rasterisation) -------------
-banner "5/7 nvdiffrast"
+banner "5/8 nvdiffrast"
 $PIP install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation || \
     echo "WARN: nvdiffrast install failed (texture export will fall back)."
 
 # --- 6. Per-backend CUDA rasterizers (compiled at sm_$GPU_ARCH) ---------------
-banner "6/7 Backend CUDA rasterizers"
+banner "6/8 Backend CUDA rasterizers"
 # Clean any stale build/ first: leftover object files from an earlier build
 # (e.g. a different GPU arch) are reused and silently ignore TORCH_CUDA_ARCH_LIST.
 # NOTE: do not run two setups against the SAME checkout concurrently — they race
@@ -91,21 +94,21 @@ build() {
 
 # 3DGS base rasterizers — needed by SuGaR (and the vanilla 3DGS step).
 case " $BACKENDS " in *" sugar "*)
-    build src/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization
-    build src/sugar/gaussian_splatting/submodules/simple-knn
+    build src/libs/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization
+    build src/libs/sugar/gaussian_splatting/submodules/simple-knn
     ;;
 esac
 case " $BACKENDS " in *" 2dgs "*)
-    build src/2dgs/submodules/diff-surfel-rasterization ;;
+    build src/libs/2dgs/submodules/diff-surfel-rasterization ;;
 esac
 case " $BACKENDS " in *" pgsr "*)
-    build src/pgsr/submodules/diff-plane-rasterization ;;
+    build src/libs/pgsr/submodules/diff-plane-rasterization ;;
 esac
 case " $BACKENDS " in *" gw "*)
-    build src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
-    build src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms
-    build src/gaussian_wrapping/submodules/fused-ssim
-    build src/gaussian_wrapping/submodules/warp-patch-ncc
+    build src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw
+    build src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms
+    build src/libs/gaussian_wrapping/submodules/fused-ssim
+    build src/libs/gaussian_wrapping/submodules/warp-patch-ncc
     ;;
 esac
 
@@ -114,7 +117,7 @@ case " $BACKENDS " in *" gw "*)
     if [ "$SKIP_TETRA" = "1" ]; then
         echo "Skipping tetra_triangulation (SKIP_TETRA=1)."
     else
-        banner "7/7 tetra_triangulation (CGAL)"
+        banner "7/8 tetra_triangulation (CGAL)"
         CONDA="${CONDA_EXE:-conda}"
         if have "$CONDA"; then
             "$CONDA" install -y cmake || true
@@ -123,7 +126,7 @@ case " $BACKENDS " in *" gw "*)
             echo "WARN: conda not found; assuming cmake/gmp/cgal already present."
         fi
         export CPATH="$CUDA_HOME/targets/x86_64-linux/include:${CPATH:-}"
-        TETRA="src/gaussian_wrapping/submodules/tetra_triangulation"
+        TETRA="src/libs/gaussian_wrapping/submodules/tetra_triangulation"
         ( cd "$TETRA"
           cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
                   -DCGAL_DIR="${CONDA_PREFIX:-/usr}/lib/cmake/CGAL" \
@@ -135,23 +138,39 @@ case " $BACKENDS " in *" gw "*)
     ;;
 esac
 
+# --- 8. The augenblick package itself (the `augenblick` console script) -------
+banner "8/8 augenblick (editable)"
+$PIP install -e . --no-deps --no-build-isolation
+
 # --- Verify -------------------------------------------------------------------
 banner "Verifying imports"
-python - <<'PY'
-import importlib, torch
+NUMPY_GENERATION="$NUMPY_GENERATION" python - <<'PY'
+import importlib, os, numpy, torch
 print("torch", torch.__version__, "| cuda", torch.version.cuda,
       "| dev cap", torch.cuda.get_device_capability(0) if torch.cuda.is_available() else "no-GPU-here")
+
+want = int(os.environ["NUMPY_GENERATION"])
+got = int(numpy.__version__.split(".")[0])
+if got != want:
+    print(f"WARN: numpy {numpy.__version__} but this torch wheel needs numpy {want}.x — ABI mismatch")
+
+# torch rejects arrays from a foreign numpy ABI, which import checks alone miss.
+try:
+    torch.from_numpy(numpy.zeros((2, 2), dtype=numpy.uint8))
+    print("numpy", numpy.__version__, "<-> torch interop OK")
+except Exception as e:
+    print(f"FAIL: torch.from_numpy | {type(e).__name__}: {e}")
+
 checks = {
-    "numpy": "numpy", "scipy.spatial": "scipy", "sklearn": "scikit-learn",
+    "augenblick": "augenblick (CLI package)",
+    "scipy.spatial": "scipy", "sklearn": "scikit-learn", "skimage": "scikit-image",
     "pycolmap": "pycolmap", "open3d": "open3d", "vggt": "vggt", "pytorch3d": "pytorch3d",
+    "trimesh": "trimesh",
     "diff_gaussian_rasterization": "diff_gaussian_rasterization (SuGaR/3DGS)",
     "simple_knn._C": "simple_knn (SuGaR/3DGS)",
     "diff_surfel_rasterization": "diff_surfel_rasterization (2DGS)",
     "diff_plane_rasterization": "diff_plane_rasterization (PGSR)",
 }
-import numpy
-if int(numpy.__version__.split(".")[0]) >= 2:
-    print("WARN: numpy", numpy.__version__, "(>=2 breaks pinned scipy/sklearn ABI)")
 ok, miss = [], []
 for mod, label in checks.items():
     try: importlib.import_module(mod); ok.append(label)
@@ -159,6 +178,8 @@ for mod, label in checks.items():
 print("OK   :", ", ".join(ok) or "none")
 print("MISS :", " | ".join(miss) or "none (all good)")
 PY
+
+have augenblick || echo "WARN: the 'augenblick' console script is not on PATH"
 
 banner "Done — $GPU_LABEL environment ready"
 echo "Note: GPU import checks only validate the arch of the node you ran on."

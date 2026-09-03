@@ -1,0 +1,17 @@
+tqdm
+hydra-core
+omegaconf
+opencv-python
+scipy
+onnxruntime
+requests
+trimesh
+matplotlib
+torchvision
+numpy
+scikit-learn
+torch
+Pillow
+huggingface_hub
+einops
+safetensors

@@ -33,7 +33,7 @@ All combinations are benchmarked on runtime and compared qualitatively against R
 - Linux (tested on RHEL 9)
 - Python 3.10
 - CUDA-capable GPU (80 GB+ VRAM recommended)
-- CUDA 12.8
+- CUDA 12.1 (Ampere/Hopper) or 12.8+ (Blackwell); see the per-GPU wrappers
 
 **Note**: VGGT requires a GPU with at least 80 GB of VRAM for large scenes. COLMAP and the reconstruction methods, however, can run on more modest hardware (32-40 GB), with tests conducted on a single NVIDIA A100 PCIe 40 GB.
 
@@ -59,49 +59,65 @@ bash scripts/setup_l40s.sh      # L40S  (sm 8.9,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_a100.sh      # A100  (sm 8.0,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_h100.sh      # H100  (sm 9.0,  CUDA 12.1 / torch 2.3.1)
 bash scripts/setup_b200.sh      # B200  (sm 10.0, CUDA 12.8 / torch 2.9.1)
+bash scripts/setup_rtx_pro_6000.sh  # RTX Pro 6000 Blackwell (sm 12.0, CUDA 12.8 / torch 2.9.1)
+```
+
+Then install the `augenblick` CLI into the same environment. Both flags are required: the package
+declares no dependencies of its own, so pip must not touch the pinned numpy/torch versions.
+
+```bash
+pip install -e . --no-deps --no-build-isolation
 ```
 
 Use `BACKENDS="2dgs pgsr"` to install a subset of backends, or `SKIP_TETRA=1` to skip the
 Gaussian Wrapping CGAL build.
+
+numpy and the packages built against its C-ABI (`scipy`, `scikit-learn`, `scikit-image`) are
+pinned in `constraints/numpy{1,2}.txt` rather than `requirements.txt`, because the required
+generation follows the GPU's torch wheel. Each wrapper selects one via `NUMPY_GENERATION`.
 
 #### Manual setup
 
 For unsupported GPUs or debugging, the scripts above wrap these steps:
 
 ```bash
-# Install Python dependencies
-python -m pip install -r requirements.txt
+# Select the constraint set matching the torch wheel below: numpy2.txt for
+# CUDA 12.8+ / torch 2.9.1, numpy1.txt for CUDA 12.1 / torch 2.3.1.
+export PIP_CONSTRAINT=constraints/numpy2.txt
 
 # Install PyTorch with CUDA (adjust URL for your CUDA version)
 python -m pip install torch==2.9.1 torchvision==0.24.1 \
     --index-url https://download.pytorch.org/whl/cu130
+
+# Install Python dependencies
+python -m pip install -r requirements.txt
 
 # Install nvdiffrast (required by SuGaR)
 python -m pip install git+https://github.com/NVlabs/nvdiffrast.git --no-build-isolation
 
 # Install CUDA submodules and local packages
 python -m pip install \
-    src/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization \
-    src/sugar/gaussian_splatting/submodules/simple-knn \
-    src/light_glue \
-    src/pytorch3d \
-    src/2dgs/submodules/diff-surfel-rasterization \
-    src/pgsr/submodules/diff-plane-rasterization \
-    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
-    src/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
-    src/gaussian_wrapping/submodules/fused-ssim \
-    src/gaussian_wrapping/submodules/warp-patch-ncc \
+    src/libs/sugar/gaussian_splatting/submodules/diff-gaussian-rasterization \
+    src/libs/sugar/gaussian_splatting/submodules/simple-knn \
+    src/libs/light_glue \
+    src/libs/pytorch3d \
+    src/libs/2dgs/submodules/diff-surfel-rasterization \
+    src/libs/pgsr/submodules/diff-plane-rasterization \
+    src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-gw \
+    src/libs/gaussian_wrapping/submodules/diff-gaussian-rasterization-ms \
+    src/libs/gaussian_wrapping/submodules/fused-ssim \
+    src/libs/gaussian_wrapping/submodules/warp-patch-ncc \
     --no-build-isolation
 
 # Install VGGT as editable package
-python -m pip install -e src/vggt --no-build-isolation
+python -m pip install -e src/libs/vggt --no-build-isolation
 
 # Build and install Tetra-NeRF triangulation module
 export CPATH=$CUDA_HOME/targets/x86_64-linux/include:$CPATH
 conda install -y cmake
 conda install -y conda-forge::gmp
 conda install -y conda-forge::cgal
-cd src/gaussian_wrapping/submodules/tetra_triangulation
+cd src/libs/gaussian_wrapping/submodules/tetra_triangulation
 cmake . -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DCGAL_DIR=$CONDA_PREFIX/lib/cmake/CGAL \
         -DTorch_DIR=$(python -c "import torch, os; print(os.path.join(os.path.dirname(torch.__file__), 'share/cmake/Torch'))") \
@@ -116,50 +132,52 @@ VGGT model weights (~4 GB) are downloaded automatically from `facebook/VGGT-1B` 
 
 ```
 augenblick/
-├── pipeline/                  # Canonical entry points
-│   ├── preparation/           #   Dataset preparation scripts
-│   │   └── prepare_uf_dataset.py
-│   ├── sfm/                   #   Structure-from-Motion scripts
-│   │   ├── run_vggt_to_colmap.py
-│   │   ├── run_turntable_to_colmap.py
-│   │   ├── run_masked_colmap.py
-│   │   └── run_colmap.sh
-│   └── reconstruction/        #   Surface reconstruction scripts
-│       ├── run_sugar.py
-│       ├── run_2dgs.py
-│       ├── run_pgsr.py
-│       └── run_gw.py
+├── pipeline/                  # Dataset preparation
+│   └── preparation/
+│       └── prepare_uf_dataset.py
 ├── src/
-│   ├── vggt/                  # VGGT model (Meta)
-│   │   └── vggt/              #   Importable Python package
-│   │       ├── models/        #     VGGT, Aggregator
-│   │       ├── heads/         #     Camera, depth, point, track heads
-│   │       ├── layers/        #     Attention, RoPE, patch embedding
-│   │       ├── utils/         #     Loading, pose encoding, geometry
-│   │       └── dependency/    #     COLMAP conversion, tracking
-│   ├── sugar/                 # SuGaR (submodule)
-│   │   ├── gaussian_splatting/#   Embedded vanilla 3DGS
-│   │   ├── sugar_trainers/    #   Coarse + refined training
-│   │   ├── sugar_extractors/  #   Mesh extraction
-│   │   └── sugar_scene/       #   SuGaR model definition
-│   ├── 2dgs/                  # 2D Gaussian Splatting
-│   │   ├── gaussian_renderer/ #   Surfel rasterizer
-│   │   ├── scene/             #   Scene + Gaussian model
-│   │   └── utils/             #   Mesh extraction (TSDF + marching cubes)
-│   ├── pgsr/                  # PGSR
-│   │   ├── gaussian_renderer/ #   Plane rasterizer
-│   │   ├── scene/             #   Scene + Gaussian + AppModel
-│   │   └── utils/             #   Loss functions, graphics
-│   ├── gaussian_wrapping/     # Gaussian Wrapping (Blobs to Spokes)
-│   │   ├── gaussian_renderer/ #   ours/radegs/sof rasterizers
-│   │   ├── extraction/        #   Pivot sampling + mesh extraction
-│   │   ├── regularization/    #   Normal-field, multiview, MILo, SDF
-│   │   ├── scene/             #   Scene + GaussianModel + Mesh
-│   │   ├── scripts/           #   End-to-end driver scripts
-│   │   └── submodules/        #   CUDA rasterizers + tetra triangulation
-│   ├── light_glue/            # LightGlue (submodule)
-│   └── pytorch3d/             # PyTorch3D (submodule)
-└── CLAUDE.md                  # Detailed codebase documentation
+│   ├── augenblick/            # The pipeline package (provides the `augenblick` CLI)
+│   │   ├── core/              #   Scene, config↔argparse bridge, registry, process, timing
+│   │   ├── sfm/               #   vggt, colmap, turntable
+│   │   ├── reconstruction/    #   2dgs, sugar, pgsr, gw
+│   │   └── cli/               #   Argument parsing and exit codes
+│   ├── libs/                  # Third-party backends (vendored + submodules)
+│   │   ├── vggt/              # VGGT model (Meta)
+│   │   │   └── vggt/          #   Importable Python package
+│   │   │       ├── models/    #     VGGT, Aggregator
+│   │   │       ├── heads/     #     Camera, depth, point, track heads
+│   │   │       ├── layers/    #     Attention, RoPE, patch embedding
+│   │   │       ├── utils/     #     Loading, pose encoding, geometry
+│   │   │       └── dependency/#     COLMAP conversion, tracking
+│   │   ├── sugar/             # SuGaR (vendored)
+│   │   │   ├── gaussian_splatting/ # Embedded vanilla 3DGS
+│   │   │   ├── sugar_trainers/     # Coarse + refined training
+│   │   │   ├── sugar_extractors/   # Mesh extraction
+│   │   │   └── sugar_scene/        # SuGaR model definition
+│   │   ├── 2dgs/              # 2D Gaussian Splatting
+│   │   │   ├── gaussian_renderer/  # Surfel rasterizer
+│   │   │   ├── scene/              # Scene + Gaussian model
+│   │   │   └── utils/              # Mesh extraction (TSDF + marching cubes)
+│   │   ├── pgsr/              # PGSR
+│   │   │   ├── gaussian_renderer/  # Plane rasterizer
+│   │   │   ├── scene/              # Scene + Gaussian + AppModel
+│   │   │   └── utils/              # Loss functions, graphics
+│   │   ├── gaussian_wrapping/ # Gaussian Wrapping (Blobs to Spokes)
+│   │   │   ├── gaussian_renderer/  # ours/radegs/sof rasterizers
+│   │   │   ├── extraction/         # Pivot sampling + mesh extraction
+│   │   │   ├── regularization/     # Normal-field, multiview, MILo, SDF
+│   │   │   ├── scene/              # Scene + GaussianModel + Mesh
+│   │   │   ├── scripts/            # End-to-end driver scripts
+│   │   │   └── submodules/         # CUDA rasterizers + tetra triangulation
+│   │   ├── light_glue/        # LightGlue (submodule)
+│   │   └── pytorch3d/         # PyTorch3D (submodule)
+│   ├── pipeline/              # Legacy first-generation pipeline
+│   └── utils/
+├── scripts/                   # Per-GPU environment installers
+├── constraints/               # numpy-generation pins (numpy1.txt, numpy2.txt)
+└── .claude/
+    ├── CLAUDE.md              # Agent orientation (succinct)
+    └── MEMORY/                # Detailed codebase documentation
 ```
 
 ## Input Requirements
@@ -203,36 +221,34 @@ python pipeline/preparation/prepare_uf_dataset.py /path/to/raw/data \
 Choose one SfM method to produce the COLMAP scene:
 
 ```bash
+# List the available methods
+augenblick sfm --list
+
 # VGGT with bundle adjustment
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/vggt_ba/ \
+augenblick sfm vggt \
+    --scene /path/to/scene/ \
+    --output /output/vggt_ba/ \
     --use_ba --shared_camera \
     --max_reproj_error 32 --max_query_pts 1048576 --query_frame_num 8
 
 # VGGT (no BA)
-python pipeline/sfm/run_vggt_to_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/vggt/ \
-    --conf_thres_value 1.0
-
-# Classical COLMAP
-bash pipeline/sfm/run_colmap.sh \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/colmap/
+augenblick sfm vggt \
+    --scene /path/to/scene/ \
+    --output /output/vggt/ \
+    --conf_thres_value 2.0
 
 # Masked COLMAP (SIFT restricted to the object masks)
-# Same incremental SfM as above, but features are only extracted inside masks/,
+# Incremental SfM via pycolmap; features are only extracted inside masks/,
 # so background clutter does not pollute the reconstruction.
-python pipeline/sfm/run_masked_colmap.py \
-    --input_dir /path/to/scene/ \
-    --output_dir /output/colmap_masked/
+augenblick sfm colmap \
+    --scene /path/to/scene/ \
+    --output /output/colmap_masked/
 
 # Turntable rig refinement (object on a turntable, static cameras)
 # Takes an existing COLMAP scene and re-solves poses on exact circular orbits.
-python pipeline/sfm/run_turntable_to_colmap.py \
-    --input_dir /output/vggt_ba/ \
-    --output_dir /output/turntable/ \
+augenblick sfm turntable \
+    --scene /output/vggt_ba/ \
+    --output /output/turntable/ \
     --use_masks
 ```
 
@@ -243,7 +259,7 @@ Replace `<sfm>` below with the SfM output directory (e.g., `/output/vggt_ba/`).
 #### SuGaR
 
 ```bash
-python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
+augenblick recon sugar --scene <sfm> --output /output/sugar/ \
     --gs_iterations 20000 --iteration_to_load 7000 \
     --regularization dn_consistency --high_poly --refinement_time long \
     --white_background
@@ -252,13 +268,13 @@ python pipeline/reconstruction/run_sugar.py <sfm> /output/sugar/ \
 #### 2DGS
 
 ```bash
-python pipeline/reconstruction/run_2dgs.py <sfm> /output/2dgs/
+augenblick recon 2dgs --scene <sfm> --output /output/2dgs/
 ```
 
 #### PGSR
 
 ```bash
-python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
+augenblick recon pgsr --scene <sfm> --output /output/pgsr/ \
     --max_abs_split_points 0 --opacity_cull_threshold 0.05 \
     --max_depth 10.0 --voxel_size 0.001
 ```
@@ -266,7 +282,7 @@ python pipeline/reconstruction/run_pgsr.py <sfm> /output/pgsr/ \
 #### Gaussian Wrapping
 
 ```bash
-python pipeline/reconstruction/run_gw.py <sfm> /output/gw/ \
+augenblick recon gw --scene <sfm> --output /output/gw/ \
     --iterations 30000 --sh_degree 3 --max_gaussians 6000000 \
     --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
 ```
