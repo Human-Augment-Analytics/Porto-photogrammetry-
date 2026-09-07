@@ -141,6 +141,7 @@ augenblick/
 │   │   ├── core/              #   Scene, config↔argparse bridge, registry, process, timing
 │   │   ├── sfm/               #   vggt, colmap, turntable, hull
 │   │   ├── reconstruction/    #   2dgs, sugar, pgsr, gw
+│   │   ├── eval/              #   Held-out split, masked PSNR/SSIM/LPIPS scorer
 │   │   └── cli/               #   Argument parsing and exit codes
 │   ├── libs/                  # Third-party backends (vendored + submodules)
 │   │   ├── vggt/              # VGGT model (Meta)
@@ -282,15 +283,12 @@ augenblick recon sugar --scene <sfm> --output /output/sugar/ \
 ```bash
 augenblick recon 2dgs --scene <sfm> --output /output/2dgs/
 
-# Hold out every 8th view for novel-view evaluation, at full input resolution.
+# Hold out views for novel-view evaluation, at full input resolution. Scoring runs
+# automatically at the end of the run; see "Novel-view evaluation" below.
 # --skip_train_export suppresses the per-training-view PNG dump, which at 3120 px is
 # tens of GB per run and is not needed for mesh extraction.
 augenblick recon 2dgs --scene <sfm> --output /output/2dgs_eval/ \
     --eval -r 2 --skip_train_export
-
-# Score the held-out views: renders them, masks both render and photo to the object,
-# and writes PSNR/SSIM/LPIPS to <model>/nvs_metrics.json.
-python src/libs/2dgs/nvs_eval.py -m /output/2dgs_eval/ --iteration 30000
 ```
 
 #### PGSR
@@ -308,6 +306,48 @@ augenblick recon gw --scene <sfm> --output /output/gw/ \
     --iterations 30000 --sh_degree 3 --max_gaussians 6000000 \
     --n_pivots 2 --std_factor 3.0 --n_binary_steps 10 --isosurface_value 0.0
 ```
+
+### Novel-view evaluation
+
+`--eval` holds views out of training and scores the reconstruction on them afterwards. It is
+supported by `2dgs`, `pgsr` and `gw`, and the protocol is identical across the three, so their
+numbers are directly comparable:
+
+```bash
+augenblick recon 2dgs --scene <sfm> --output /output/2dgs_eval/ --eval -r 2 --skip_train_export
+augenblick recon pgsr --scene <sfm> --output /output/pgsr_eval/ --eval -r 2
+augenblick recon gw   --scene <sfm> --output /output/gw_eval/   --eval -r 2
+```
+
+Each run writes `<output>/nvs_metrics.json` holding masked PSNR, SSIM and LPIPS averaged over
+the held-out views, plus a per-view breakdown. Both the render and the photograph are masked to
+the specimen before scoring, because these are masked turntable captures where scoring the
+background would mostly reward reproducing the black surround.
+
+The held-out set is fixed by `<scene>/split.json`, which the first `--eval` run writes by
+holding out every 8th registered image. Every backend reads that file in preference to its own
+built-in rule, so all of them train on the same images and are scored on the same images. Write
+the file yourself before running anything to impose a different split:
+
+```json
+{"train": ["camera1_IMG_2669", "..."], "test": ["camera1_IMG_2677", "..."]}
+```
+
+Names are image stems, matching the mask file names. An existing `split.json` is never
+overwritten.
+
+To rescore an already-trained model without retraining it, for instance after changing the
+masks:
+
+```bash
+python -m augenblick.eval.nvs --scene <sfm> --output /output/2dgs_eval/
+```
+
+Two caveats when comparing backends. Pass the same `-r` to every run, since the metrics are
+computed at whatever resolution the backend trained at. And note that `gw --eval` trains
+without exposure compensation: that stage fits one exposure per training camera, so a held-out
+camera has none, and leaving it on would score the reconstruction against an exposure it was
+never given. `sugar` does not support `--eval`.
 
 ### Output
 

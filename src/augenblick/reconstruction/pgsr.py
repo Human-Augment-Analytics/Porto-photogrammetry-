@@ -8,6 +8,7 @@ from typing import ClassVar
 
 from augenblick.core.registry import register_reconstruction
 from augenblick.core.scene import Scene
+from augenblick.eval.split import copy_split
 from augenblick.reconstruction.base import LIBS_DIR, Stage, SubprocessBackend
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,10 @@ class PgsrConfig:
     num_cluster: int = field(default=1, metadata={"help": "Connected components to keep in mesh"})
     use_depth_filter: bool = field(default=False, metadata={
         "help": "Drop grazing-angle depths before TSDF fusion"})
+    eval: bool = field(default=False, metadata={
+        "help": "Hold out views for novel-view evaluation, from the scene's split.json"})
+    resolution: int = field(default=-1, metadata={
+        "short": "-r", "help": "Input downscale factor; -1 caps the long side at 1600 px"})
     skip_mesh: bool = field(default=False, metadata={"help": "Skip mesh extraction (render only)"})
 
 
@@ -81,6 +86,8 @@ class PgsrBackend(SubprocessBackend):
             src = scene_dir / subdir
             if src.is_dir():
                 shutil.copytree(src, pgsr_scene / subdir)
+        # PGSR reads split.json from the copy, so the held-out set has to travel with it.
+        copy_split(scene_dir, pgsr_scene)
 
         sparse_0 = pgsr_scene / "sparse" / "0"
         sparse = pgsr_scene / "sparse"
@@ -116,6 +123,10 @@ class PgsrBackend(SubprocessBackend):
         ]
         if c.white_background:
             train_cmd.append("--white_background")
+        if c.eval:
+            train_cmd.append("--eval")
+        if c.resolution != -1:
+            train_cmd += ["-r", str(c.resolution)]
 
         render_cmd = [
             sys.executable, str(RENDER_SCRIPT),
@@ -123,8 +134,11 @@ class PgsrBackend(SubprocessBackend):
             "--max_depth", str(c.max_depth),
             "--voxel_size", str(c.voxel_size),
             "--num_cluster", str(c.num_cluster),
-            "--skip_test",
         ]
+        # Held-out views only exist to be rendered when there is a split; render.py reads the
+        # scene path and resolution back from the model's cfg_args, so they are not repeated.
+        if not c.eval:
+            render_cmd.append("--skip_test")
         if c.use_depth_filter:
             render_cmd.append("--use_depth_filter")
         # Upstream render.py spells mesh skipping as --skip_train.

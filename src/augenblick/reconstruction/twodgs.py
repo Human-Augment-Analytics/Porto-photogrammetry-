@@ -43,7 +43,7 @@ class TwoDGSConfig:
     mesh_res: int = field(default=4096, metadata={"help": "Resolution for unbounded mesh extraction"})
     skip_mesh: bool = field(default=False, metadata={"help": "Skip mesh extraction (render only)"})
     eval: bool = field(default=False, metadata={
-        "help": "Hold out every 8th view for novel-view evaluation instead of training on all"})
+        "help": "Hold out views for novel-view evaluation, from the scene's split.json"})
     resolution: int = field(default=-1, metadata={
         "short": "-r", "help": "Input downscale factor; -1 caps the long side at 1600 px"})
     skip_train_export: bool = field(default=False, metadata={
