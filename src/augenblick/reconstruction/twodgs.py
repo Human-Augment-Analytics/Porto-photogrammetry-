@@ -42,6 +42,12 @@ class TwoDGSConfig:
         "help": "Use unbounded mesh extraction (marching cubes)"})
     mesh_res: int = field(default=4096, metadata={"help": "Resolution for unbounded mesh extraction"})
     skip_mesh: bool = field(default=False, metadata={"help": "Skip mesh extraction (render only)"})
+    eval: bool = field(default=False, metadata={
+        "help": "Hold out every 8th view for novel-view evaluation instead of training on all"})
+    resolution: int = field(default=-1, metadata={
+        "short": "-r", "help": "Input downscale factor; -1 caps the long side at 1600 px"})
+    skip_train_export: bool = field(default=False, metadata={
+        "help": "Skip writing per-training-view PNGs; mesh extraction is unaffected"})
 
 
 @register_reconstruction
@@ -73,6 +79,10 @@ class TwoDGSBackend(SubprocessBackend):
         ]
         if c.white_background:
             train_cmd.append("--white_background")
+        if c.eval:
+            train_cmd.append("--eval")
+        if c.resolution != -1:
+            train_cmd += ["-r", str(c.resolution)]
 
         render_cmd = [
             sys.executable, str(RENDER_SCRIPT),
@@ -83,8 +93,16 @@ class TwoDGSBackend(SubprocessBackend):
             "--sdf_trunc", str(c.sdf_trunc),
             "--num_cluster", str(c.num_cluster),
             "--mesh_res", str(c.mesh_res),
-            "--skip_test",
         ]
+        # Held-out views only exist to be rendered when there is a split.
+        if not c.eval:
+            render_cmd.append("--skip_test")
+        else:
+            render_cmd.append("--eval")
+        if c.resolution != -1:
+            render_cmd += ["-r", str(c.resolution)]
+        if c.skip_train_export:
+            render_cmd.append("--skip_train")
         if c.unbounded:
             render_cmd.append("--unbounded")
         if c.skip_mesh:

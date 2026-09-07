@@ -139,7 +139,7 @@ augenblick/
 ├── src/
 │   ├── augenblick/            # The pipeline package (provides the `augenblick` CLI)
 │   │   ├── core/              #   Scene, config↔argparse bridge, registry, process, timing
-│   │   ├── sfm/               #   vggt, colmap, turntable
+│   │   ├── sfm/               #   vggt, colmap, turntable, hull
 │   │   ├── reconstruction/    #   2dgs, sugar, pgsr, gw
 │   │   └── cli/               #   Argument parsing and exit codes
 │   ├── libs/                  # Third-party backends (vendored + submodules)
@@ -254,6 +254,14 @@ augenblick sfm turntable \
     --scene /output/vggt_ba/ \
     --output /output/turntable/ \
     --use_masks
+
+# Visual-hull initialisation (refines a scene that already has poses and masks)
+# Carves the silhouette intersection and writes it as sparse/0/points3D.ply, which the
+# reconstruction backends load in preference to points3D.bin. Poses and intrinsics are
+# copied through unchanged, so only the starting point cloud differs.
+augenblick sfm hull \
+    --scene /output/colmap_masked/ \
+    --output /output/hull/
 ```
 
 ### Step 2: Surface Reconstruction
@@ -273,6 +281,16 @@ augenblick recon sugar --scene <sfm> --output /output/sugar/ \
 
 ```bash
 augenblick recon 2dgs --scene <sfm> --output /output/2dgs/
+
+# Hold out every 8th view for novel-view evaluation, at full input resolution.
+# --skip_train_export suppresses the per-training-view PNG dump, which at 3120 px is
+# tens of GB per run and is not needed for mesh extraction.
+augenblick recon 2dgs --scene <sfm> --output /output/2dgs_eval/ \
+    --eval -r 2 --skip_train_export
+
+# Score the held-out views: renders them, masks both render and photo to the object,
+# and writes PSNR/SSIM/LPIPS to <model>/nvs_metrics.json.
+python src/libs/2dgs/nvs_eval.py -m /output/2dgs_eval/ --iteration 30000
 ```
 
 #### PGSR
